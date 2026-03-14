@@ -1,8 +1,12 @@
 {
   "expo": {
-    "name": "patients-record-app",
-    "slug": "patients-record-app",
+    "name": "medicore-app",
+    "slug": "medicore-app",
+    "scheme": "patients-record-app",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,9 +16,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.medicore.app"
     },
     "android": {
+      "package": "com.medicore.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -25,6 +31,20 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "875329f5-5a32-4ce6-895d-f8012aaeecfa"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/875329f5-5a32-4ce6-895d-f8012aaeecfa"
     }
   }
 }
