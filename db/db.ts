@@ -600,6 +600,25 @@ export async function addPatientHistory(history: PatientHistoryItem) {
   }
 }
 
+/**
+ * Verifies Admin credentials against the Supabase 'admins' table.
+ */
+export async function verifyAdmin(username: string, password: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('admins')
+    .select('id')
+    .eq('username', sanitizeInput(username))
+    .eq('password', sanitizeInput(password))
+    .single();
+
+  if (error || !data) {
+    console.warn('Admin verification failed:', error?.message);
+    return false;
+  }
+
+  return true;
+}
+
 
 
 

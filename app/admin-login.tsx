@@ -1,33 +1,39 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-// Using localStorage for web-based session persistence
+import { verifyAdmin } from '../db/db';
 
 export default function AdminLogin() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
     if (!username || !password) {
       setError('Both fields are required.');
       return;
     }
-    // Hardened simulation: In a real app, this would be a server-side check
-    if (username === 'admin' && password === 'password123') {
-      try {
+
+    setIsLoading(true);
+    try {
+      const isValid = await verifyAdmin(username, password);
+      
+      if (isValid) {
         if (Platform.OS === 'web') {
           localStorage.setItem('admin_session', 'active_' + Date.now());
         }
         router.push('/admin');
-      } catch (e) {
-        setError('Failed to create session.');
+      } else {
+        setError('Invalid admin credentials.');
       }
-    } else {
-      setError('Invalid admin credentials.');
+    } catch (e) {
+      setError('An error occurred during login. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -81,8 +87,16 @@ export default function AdminLogin() {
             />
           </View>
 
-          <TouchableOpacity style={styles.submitButton} onPress={handleLogin}>
-            <Text style={styles.submitButtonText}>Submit</Text>
+          <TouchableOpacity 
+            style={[styles.submitButton, isLoading && styles.submitButtonDisabled]} 
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>Submit</Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -160,6 +174,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
   errorText: {
     color: '#E53E3E',
