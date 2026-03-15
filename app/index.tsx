@@ -1,19 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Modal, Pressable, Image, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Landing() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminVisible, setIsAdminVisible] = useState(false);
-  const [logoTapCount, setLogoTapCount] = useState(0);
 
   useEffect(() => {
-    const checkAdminAccess = async () => {
-      // 1. Check Mobile Device Name
+    const handleAccessLogic = async () => {
+      // 1. Check for URL Activation (Web/PC)
+      if (params.admin) {
+        if (params.admin === 'enable') {
+          await AsyncStorage.setItem('admin_access_token', 'dronavalli_secure_token');
+          setIsAdminVisible(true);
+          alert('Admin Portal has been activated for this device.');
+          return;
+        } else if (params.admin === 'disable') {
+          await AsyncStorage.removeItem('admin_access_token');
+          setIsAdminVisible(false);
+          alert('Admin Portal has been hidden.');
+          return;
+        }
+      }
+
+      // 2. Check for existing Web Token
+      const storedToken = await AsyncStorage.getItem('admin_access_token');
+      if (storedToken === 'dronavalli_secure_token') {
+        setIsAdminVisible(true);
+        return;
+      }
+
+      // 3. Check Mobile Device Name (Strict Match)
       if (Platform.OS !== 'web') {
         const deviceName = Device.deviceName;
         if (deviceName && deviceName.toLowerCase().includes('dronavalli')) {
@@ -22,26 +44,12 @@ export default function Landing() {
         }
       }
 
-      // 2. Check Web/Stored Activation
-      const isActivated = await AsyncStorage.getItem('admin_pc_activated');
-      if (isActivated === 'true') {
-        setIsAdminVisible(true);
-      }
+      // 4. Default: Hidden
+      setIsAdminVisible(false);
     };
-    checkAdminAccess();
-  }, []);
 
-  const handleLogoTap = async () => {
-    const newCount = logoTapCount + 1;
-    setLogoTapCount(newCount);
-    
-    if (newCount >= 7) {
-      await AsyncStorage.setItem('admin_pc_activated', 'true');
-      setIsAdminVisible(true);
-      setLogoTapCount(0);
-      alert('Admin Portal Activated for this device.');
-    }
-  };
+    handleAccessLogic();
+  }, [params.admin]);
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
@@ -100,13 +108,11 @@ export default function Landing() {
 
       <View style={styles.content}>
         <View style={styles.header}>
-          <Pressable onPress={handleLogoTap}>
-            <Image 
-              source={require('../assets/images/metrack_logo.png')} 
-              style={styles.logoUnderlay}
-              resizeMode="contain"
-            />
-          </Pressable>
+          <Image 
+            source={require('../assets/images/metrack_logo.png')} 
+            style={styles.logoUnderlay}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>MediTrack</Text>
           <Text style={styles.subtitle}>MediTrack Records</Text>
         </View>
