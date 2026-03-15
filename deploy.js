@@ -1,5 +1,5 @@
 const { spawn } = require('child_process');
-const surge = spawn('npx', ['surge', 'dist', 'medicore-patients-app.surge.sh'], { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+const surge = spawn('npx', ['surge', 'dist', 'meditrack-portal.surge.sh'], { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
 
 surge.stdout.on('data', (data) => {
   const output = data.toString();

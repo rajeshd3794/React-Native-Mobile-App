@@ -11,7 +11,7 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Explicitly clear fields every time the screen comes into focus
+  // 1. Clear fields immediately on focus
   useFocusEffect(
     useCallback(() => {
       setUsername('');
@@ -19,6 +19,15 @@ export default function AdminLogin() {
       setError('');
     }, [])
   );
+
+  // 2. Extra Layer: Delayed Force-Clear (Browsers often autofill 100-300ms after load)
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setUsername('');
+      setPassword('');
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleLogin = async () => {
     setError('');
@@ -90,7 +99,7 @@ export default function AdminLogin() {
               onChangeText={setPassword}
               secureTextEntry
               autoCapitalize="none"
-              autoComplete="off"
+              autoComplete="new-password" 
               autoCorrect={false}
               importantForAutofill="no"
               textContentType="none"
