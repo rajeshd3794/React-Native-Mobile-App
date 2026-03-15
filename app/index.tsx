@@ -1,11 +1,47 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Modal, Pressable, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Modal, Pressable, Image, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Landing() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAdminVisible, setIsAdminVisible] = useState(false);
+  const [logoTapCount, setLogoTapCount] = useState(0);
+
+  useEffect(() => {
+    const checkAdminAccess = async () => {
+      // 1. Check Mobile Device Name
+      if (Platform.OS !== 'web') {
+        const deviceName = Device.deviceName;
+        if (deviceName && deviceName.toLowerCase().includes('dronavalli')) {
+          setIsAdminVisible(true);
+          return;
+        }
+      }
+
+      // 2. Check Web/Stored Activation
+      const isActivated = await AsyncStorage.getItem('admin_pc_activated');
+      if (isActivated === 'true') {
+        setIsAdminVisible(true);
+      }
+    };
+    checkAdminAccess();
+  }, []);
+
+  const handleLogoTap = async () => {
+    const newCount = logoTapCount + 1;
+    setLogoTapCount(newCount);
+    
+    if (newCount >= 7) {
+      await AsyncStorage.setItem('admin_pc_activated', 'true');
+      setIsAdminVisible(true);
+      setLogoTapCount(0);
+      alert('Admin Portal Activated for this device.');
+    }
+  };
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
@@ -34,13 +70,17 @@ export default function Landing() {
       >
         <Pressable style={styles.modalOverlay} onPress={toggleMenu}>
           <View style={styles.menuDropdown}>
-            <TouchableOpacity 
-              style={styles.menuItem} 
-              onPress={() => navigateTo('/admin-login')}
-            >
-              <Text style={styles.menuItemText}>Admin</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
+            {isAdminVisible && (
+              <>
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => navigateTo('/admin-login')}
+                >
+                  <Text style={styles.menuItemText}>Admin</Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+              </>
+            )}
             <TouchableOpacity 
               style={styles.menuItem} 
               onPress={() => navigateTo('/doctor-login')}
@@ -60,11 +100,13 @@ export default function Landing() {
 
       <View style={styles.content}>
         <View style={styles.header}>
-          <Image 
-            source={require('../assets/images/metrack_logo.png')} 
-            style={styles.logoUnderlay}
-            resizeMode="contain"
-          />
+          <Pressable onPress={handleLogoTap}>
+            <Image 
+              source={require('../assets/images/metrack_logo.png')} 
+              style={styles.logoUnderlay}
+              resizeMode="contain"
+            />
+          </Pressable>
           <Text style={styles.title}>MediTrack</Text>
           <Text style={styles.subtitle}>MediTrack Records</Text>
         </View>
