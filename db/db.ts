@@ -604,15 +604,16 @@ export async function addPatientHistory(history: PatientHistoryItem) {
  * Verifies Admin credentials against the Supabase 'admins' table.
  */
 export async function verifyAdmin(username: string, password: string): Promise<boolean> {
+  // Check the Doctors table in Supabase for matching credentials
   const { data, error } = await supabase
-    .from('admins')
+    .from('doctors')
     .select('id')
-    .eq('username', sanitizeInput(username))
-    .eq('password', sanitizeInput(password))
+    .eq('username', username.trim().toLowerCase()) // Match lowercase username
+    .eq('password', password) // Exact password match
     .single();
 
   if (error || !data) {
-    console.warn('Admin verification failed:', error?.message);
+    console.warn('Admin/Doctor cloud verification failed:', error?.message);
     return false;
   }
 
