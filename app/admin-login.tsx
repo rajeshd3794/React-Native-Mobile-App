@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { verifyAdmin } from '../db/db';
 
@@ -10,6 +10,15 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Explicitly clear fields every time the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      setUsername('');
+      setPassword('');
+      setError('');
+    }, [])
+  );
 
   const handleLogin = async () => {
     setError('');
@@ -65,6 +74,7 @@ export default function AdminLogin() {
               onChangeText={setUsername}
               autoCapitalize="none"
               autoComplete="off"
+              autoCorrect={false}
               importantForAutofill="no"
               textContentType="none"
               placeholderTextColor="#A0AEC0"
@@ -81,6 +91,7 @@ export default function AdminLogin() {
               secureTextEntry
               autoCapitalize="none"
               autoComplete="off"
+              autoCorrect={false}
               importantForAutofill="no"
               textContentType="none"
               placeholderTextColor="#A0AEC0"
