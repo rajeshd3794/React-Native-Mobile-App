@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Platform, Modal, Pressable } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -12,36 +12,47 @@ export default function PatientRecords() {
   const [patient, setPatient] = useState<any>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  useEffect(() => {
-    const fetchPatientData = async () => {
-      const storedName = params.name as string;
-      try {
-        const found = await getPatientByUsername(storedName);
-        if (found) {
-          setPatient(found);
-          return;
-        }
-      } catch (e) {
-        console.error('Failed to fetch patient data', e);
+  const fetchPatientData = useCallback(async () => {
+    const storedName = params.name as string;
+    if (!storedName) return;
+    
+    try {
+      const found = await getPatientByUsername(storedName);
+      if (found) {
+        setPatient(found);
+        return;
       }
-      
-      // Fallback patient data for mock user
-      setPatient({
-        name: storedName || 'John Doe',
-        username: storedName || 'patient',
-        age: 30,
-        condition: 'General Checkup',
-        status: 'Stable',
-        bloodType: 'A+',
-        weight: '165 lbs',
-        height: '5\'9"',
-        lastVisit: 'Recent',
-        notes: 'No critical medical history. Regular exercise and balanced diet recommended.'
-      });
-    };
-
-    fetchPatientData();
+    } catch (e) {
+      console.error('Failed to fetch patient data', e);
+    }
+    
+    // Fallback patient data for mock user if no DB record found
+    setPatient({
+      name: storedName || 'John Doe',
+      username: storedName || 'patient',
+      age: 30,
+      condition: 'General Checkup',
+      status: 'Stable',
+      bloodType: 'A+',
+      weight: '165 lbs',
+      height: '5\'9"',
+      lastVisit: 'Recent',
+      notes: 'No critical medical history. Regular exercise and balanced diet recommended.'
+    });
   }, [params.name]);
+
+  // Handle focus (navigation backward)
+  useFocusEffect(
+    useCallback(() => {
+      fetchPatientData();
+    }, [fetchPatientData])
+  );
+
+  // Handle real-time polling (Handles "Immediate" visibility if patient is on page)
+  useEffect(() => {
+    const interval = setInterval(fetchPatientData, 10000); // Polling every 10 seconds
+    return () => clearInterval(interval);
+  }, [fetchPatientData]);
 
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
@@ -142,7 +153,9 @@ export default function PatientRecords() {
           </View>
           <View style={styles.vitalCard}>
             <Text style={styles.vitalLabel}>Current Status</Text>
-            <Text style={[styles.vitalValue, { color: '#38A169' }]}>{patient.status || 'Stable'}</Text>
+            <Text style={[styles.vitalValue, { color: patient.status === 'Critical' ? '#E53E3E' : patient.status === 'Review' ? '#D69E2E' : '#38A169' }]}>
+              {patient.status || 'Stable'}
+            </Text>
           </View>
         </View>
 
