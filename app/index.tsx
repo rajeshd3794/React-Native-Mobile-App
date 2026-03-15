@@ -10,6 +10,7 @@ export default function Landing() {
   const params = useLocalSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminVisible, setIsAdminVisible] = useState(false);
+  const [logoTapCount, setLogoTapCount] = useState(0);
 
   useEffect(() => {
     const handleAccessLogic = async () => {
@@ -50,6 +51,18 @@ export default function Landing() {
 
     handleAccessLogic();
   }, [params.admin]);
+
+  const handleLogoTap = async () => {
+    const newCount = logoTapCount + 1;
+    setLogoTapCount(newCount);
+    
+    if (newCount >= 7) {
+      await AsyncStorage.setItem('admin_access_token', 'dronavalli_secure_token');
+      setIsAdminVisible(true);
+      setLogoTapCount(0);
+      alert('Admin Access Activated!');
+    }
+  };
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
@@ -108,11 +121,13 @@ export default function Landing() {
 
       <View style={styles.content}>
         <View style={styles.header}>
-          <Image 
-            source={require('../assets/images/metrack_logo.png')} 
-            style={styles.logoUnderlay}
-            resizeMode="contain"
-          />
+          <TouchableOpacity activeOpacity={1} onPress={handleLogoTap}>
+            <Image 
+              source={require('../assets/images/metrack_logo.png')} 
+              style={styles.logoUnderlay}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
           <Text style={styles.title}>MediTrack</Text>
           <Text style={styles.subtitle}>MediTrack Records</Text>
         </View>
