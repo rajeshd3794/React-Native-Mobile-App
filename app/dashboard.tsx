@@ -248,11 +248,10 @@ export default function Dashboard() {
               style={styles.statCard} 
               onPress={() => {
                 setActiveView('recent');
-                // Optional: filter for critical only if desired, but user just asked for the count
               }}
             >
               <Text style={[styles.statNumber, { color: '#E53E3E' }]}>
-                {completedAppts.filter(p => p.status === 'Critical').length}
+                {patients.filter(p => p.status === 'Critical').length}
               </Text>
               <Text style={styles.statLabel}>Critical</Text>
             </TouchableOpacity>
