@@ -71,6 +71,23 @@ export default function Dashboard() {
       fetchStoredPatients();
     }, [loading])
   );
+  
+  // Real-time Background Sync: Polls database every 10 seconds
+  useEffect(() => {
+    if (loading) return;
+    
+    const pollDatabase = async () => {
+      try {
+        const storedPatients = await getAllPatients();
+        setPatients(storedPatients);
+      } catch(e) {
+        console.error("Background sync failed", e);
+      }
+    };
+    
+    const interval = setInterval(pollDatabase, 10000); 
+    return () => clearInterval(interval);
+  }, [loading]);
 
   // Parse stats
   useEffect(() => {
