@@ -659,6 +659,38 @@ export async function verifyAdmin(username: string, password: string): Promise<b
   return true;
 }
 
+/**
+ * Iterates through all patients and marks appointments as 'Completed' if the time has passed.
+ * Persists changes to both Cloud and Local DB.
+ */
+export async function checkAndAutoUpdateAppointments(): Promise<void> {
+  try {
+    const patients = await getAllPatients();
+    const now = Date.now();
+    let updatesCount = 0;
+
+    for (const p of patients) {
+      if (p.nextAppointment && p.nextAppointment !== 'Completed' && p.nextAppointment !== 'Pending' && p.nextAppointment !== 'None') {
+        const apptTime = new Date(p.nextAppointment).getTime();
+        
+        // If appt time is valid AND it's in the past (more than 1 minute ago to be safe)
+        if (!isNaN(apptTime) && (now - apptTime > 60000)) {
+          console.log(`Auto-completing appointment for ${p.username}`);
+          await updatePatient({
+            ...p,
+            status: 'Completed',
+            nextAppointment: 'Completed'
+          });
+          updatesCount++;
+        }
+      }
+    }
+    if (updatesCount > 0) console.log(`Auto-completed ${updatesCount} appointments.`);
+  } catch (e) {
+    console.error('checkAndAutoUpdateAppointments failed:', e);
+  }
+}
+
 
 
 

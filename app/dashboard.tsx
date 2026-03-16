@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Pla
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAllPatients, Patient, getDoctorByUsername } from '../db/db';
+import { getAllPatients, Patient, getDoctorByUsername, checkAndAutoUpdateAppointments } from '../db/db';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -78,6 +78,7 @@ export default function Dashboard() {
     
     const pollDatabase = async () => {
       try {
+        await checkAndAutoUpdateAppointments();
         const storedPatients = await getAllPatients();
         setPatients(storedPatients);
       } catch(e) {
@@ -127,46 +128,7 @@ export default function Dashboard() {
   // Real-time Lifecycle Monitor: Polls every 10 seconds to auto-expire appointments
   // Since we don't have true timestamp records for the mock initial data, we'll simulate
   // by expiring any strictly formatted 'MM/DD/YYYY, HH:MM' string that is > 30 mins old.
-  useEffect(() => {
-    const checkApptExpirations = async () => {
-      let patientsChanged = false;
-      const updatedPatients = [...patients];
-      const newlyCompleted: any[] = [];
-      const now = Date.now();
-
-      for (let i = 0; i < updatedPatients.length; i++) {
-        const p = updatedPatients[i];
-        if (p.nextAppointment && p.nextAppointment.includes(':')) {
-          // Attempt to parse Date. The Request flow creates string like "10/24/2023, 10:30 AM"
-          const apptTime = new Date(p.nextAppointment).getTime();
-          // If the parsed date is valid AND it's been more than 30 minutes (1800000 ms) in the past
-          if (!isNaN(apptTime) && (now - apptTime > 1800000)) {
-            newlyCompleted.push({...p, completedAt: now});
-            updatedPatients[i] = { ...p, nextAppointment: 'Completed' };
-            patientsChanged = true;
-          }
-        }
-      }
-
-      if (patientsChanged) {
-        setPatients(updatedPatients);
-        
-        try {
-          // Flush to async storage for local responsiveness
-          await AsyncStorage.setItem('meditrack_patients', JSON.stringify(updatedPatients));
-          
-          // Note: In a real app, you would also trigger individual updatePatient(p) 
-          // calls here if you want these "Completed" states to hit the Cloud DB immediately.
-          // For now, we at least ensure the dashboard list is unified.
-        } catch (e) {
-          console.error("Failed to migrate completed appointments", e);
-        }
-      }
-    };
-
-    const interval = setInterval(checkApptExpirations, 10000); // Polling every 10 seconds for demo responsiveness
-    return () => clearInterval(interval);
-  }, [patients]);
+  // Centralized background auto-expiration logic moved to pollDatabase for efficiency
 
   useEffect(() => {
     // If a new patient was passed in the URL, dynamically insert them into the array

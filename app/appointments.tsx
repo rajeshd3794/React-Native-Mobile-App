@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { getAllPatients, Patient } from '../db/db';
+import { getAllPatients, Patient, checkAndAutoUpdateAppointments } from '../db/db';
 
 export default function Appointments() {
   const router = useRouter();
@@ -13,6 +13,7 @@ export default function Appointments() {
   useEffect(() => {
     const fetchAppointments = async () => {
       try {
+        await checkAndAutoUpdateAppointments();
         const allPatients = await getAllPatients();
         // Filter patients who have a non-Pending, non-Completed appointment
         const appts = allPatients.filter(p => 
