@@ -19,11 +19,7 @@ export default function PatientProfile() {
       try {
         const found = await getPatientByUsername(id as string);
         if (found) {
-          if (paramStatus) {
-            setPatient({ ...found, status: paramStatus });
-          } else {
-            setPatient(found);
-          }
+          setPatient(found);
           return;
         }
       } catch (e) {
@@ -61,6 +57,9 @@ export default function PatientProfile() {
       await updatePatient(editForm);
       setPatient(editForm);
       setIsEditing(false);
+      if (Platform.OS !== 'web') {
+        alert('Patient records updated successfully!');
+      }
     } catch (e) {
       console.error('Failed to save edits', e);
     }

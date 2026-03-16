@@ -409,23 +409,38 @@ export async function addPatient(patient: Patient) {
 }
 
 export async function getPatientByUsername(username: string): Promise<Patient | null> {
-  // 1. Try Cloud
-  const { data, error } = await supabase
+  // 1. Try Cloud by Username
+  const { data: cloudUser, error: cloudError } = await supabase
     .from('patients')
     .select('*')
     .eq('username', username)
     .single();
   
-  if (!error && data) return mapCloudToPatient(data);
+  if (!cloudError && cloudUser) return mapCloudToPatient(cloudUser);
 
-  // 2. Try Local
+  // 2. Try Cloud by Name (Fallback for dashboard navigation)
+  const { data: cloudName, error: cloudNameError } = await supabase
+    .from('patients')
+    .select('*')
+    .eq('name', username)
+    .single();
+  
+  if (!cloudNameError && cloudName) return mapCloudToPatient(cloudName);
+
+  // 3. Try Local
   try {
     const db = await getDb();
     if (db) {
-      return await db.getFirstAsync('SELECT * FROM Patients WHERE username = ?', [username]) as Patient | null;
+      // By Username
+      const localUser = await db.getFirstAsync('SELECT * FROM Patients WHERE username = ?', [username]) as Patient | null;
+      if (localUser) return localUser;
+
+      // By Name
+      const localName = await db.getFirstAsync('SELECT * FROM Patients WHERE name = ?', [username]) as Patient | null;
+      if (localName) return localName;
     }
   } catch (e) {
-    console.warn('Local getPatientByUsername failed:', e);
+    console.warn('Local patient lookup failed:', e);
   }
   return null;
 }
