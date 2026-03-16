@@ -63,22 +63,32 @@ export default function Dashboard() {
     }
   };
 
+  const fetchStoredPatients = useCallback(async () => {
+    try {
+      const storedPatients = await getAllPatients();
+      setPatients(prev => {
+        const newArray = [...storedPatients, ...initialPatients];
+        // Filter by username/name to avoid duplicates between initial and stored
+        // Using username as primary key for uniqueness if available
+        const unique = newArray.filter((v, i, a) => 
+          a.findIndex((t: any) => {
+            const vAny = v as any;
+            // Priority: Match by username if both have it
+            if (t.username && vAny.username) return t.username === vAny.username;
+            // Fallback: Match by name
+            return t.name === vAny.name;
+          }) === i
+        );
+        return unique;
+      });
+    } catch(e) {
+      console.error("Failed to load patients from database", e);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       if (loading) return;
-      const fetchStoredPatients = async () => {
-        try {
-          const storedPatients = await getAllPatients();
-          setPatients(prev => {
-            const newArray = [...storedPatients, ...initialPatients];
-            // Filter by name to avoid duplicates between initial and stored
-            const unique = newArray.filter((v, i, a) => a.findIndex(t => (t.name === v.name)) === i);
-            return unique;
-          });
-        } catch(e) {
-          console.error("Failed to load patients from database", e);
-        }
-      };
       fetchStoredPatients();
       
       // Also fetch completed appts on focus
@@ -91,8 +101,15 @@ export default function Dashboard() {
         } catch(e) {}
       };
       fetchCompleted();
-    }, [])
+    }, [loading, fetchStoredPatients])
   );
+
+  // Real-time polling to catch updates from Detail page without reload
+  useEffect(() => {
+    if (loading) return;
+    const interval = setInterval(fetchStoredPatients, 10000); // 10s polling
+    return () => clearInterval(interval);
+  }, [loading, fetchStoredPatients]);
 
   // Parse total active appointments
   useEffect(() => {

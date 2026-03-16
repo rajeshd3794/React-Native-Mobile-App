@@ -114,7 +114,16 @@ export default function PatientProfile() {
               {patient.name.split(' ').map((n: string) => n[0]).join('')}
             </Text>
           </View>
-          <Text style={styles.patientName}>{patient.name}</Text>
+          {isEditing ? (
+            <TextInput
+              style={[styles.patientName, styles.editInputName]}
+              value={editForm.name || ''}
+              onChangeText={(t) => setEditForm({...editForm, name: t})}
+              placeholder="Full Name"
+            />
+          ) : (
+            <Text style={styles.patientName}>{patient.name}</Text>
+          )}
           <Text style={styles.patientCondition}>{patient.condition}</Text>
           
           <View style={styles.tagsContainer}>
@@ -410,6 +419,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  editInputName: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#3182CE',
+    minWidth: 200,
+    textAlign: 'center',
+    paddingVertical: 2,
   },
   actionsContainer: {
     gap: 12,
