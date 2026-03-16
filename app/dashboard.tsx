@@ -10,9 +10,10 @@ export default function Dashboard() {
   const params = useLocalSearchParams();
 
   const [patients, setPatients] = useState<any[]>([]);
-  const [completedAppts, setCompletedAppts] = useState<any[]>([]);
   const [activeApptsToday, setActiveApptsToday] = useState(0);
   const [nextDayApptsCount, setNextDayApptsCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [criticalCount, setCriticalCount] = useState(0);
   const [activeView, setActiveView] = useState<'recent' | 'completed' | 'nextDay'>('recent');
   
   const [doctorDisplay, setDoctorDisplay] = useState(params.doctorName as string || 'Doctor');
@@ -66,38 +67,42 @@ export default function Dashboard() {
         }
       };
       fetchStoredPatients();
-      
-      // Also fetch completed appts on focus
-      const fetchCompleted = async () => {
-        try {
-          const storedCompleted = await AsyncStorage.getItem('meditrack_completed_appts');
-          if (storedCompleted) {
-            setCompletedAppts(JSON.parse(storedCompleted));
-          }
-        } catch(e) {}
-      };
-      fetchCompleted();
     }, [loading])
   );
 
-  // Parse total active appointments
+  // Parse stats
   useEffect(() => {
     let today = 0;
     let nextDay = 0;
+    let completed = 0;
+    let critical = 0;
     
     patients.forEach(p => {
-      if (p.nextAppointment && p.nextAppointment !== 'Pending' && p.nextAppointment !== 'Completed' && p.nextAppointment !== 'None') {
-        const apptTime = new Date(p.nextAppointment).getTime();
-        // Categorize appointments more than 24hrs away as 'Next Day'
-        if (!isNaN(apptTime) && apptTime > Date.now() + 86400000) {
-          nextDay++;
-        } else {
-          today++;
+      // 1. Count by status/type
+      if (p.nextAppointment === 'Completed') {
+        completed++;
+      } else {
+        if (p.status === 'Critical') critical++;
+        
+        // 2. Count active appointments by date
+        if (p.nextAppointment && p.nextAppointment !== 'Pending' && p.nextAppointment !== 'None') {
+          const apptTime = new Date(p.nextAppointment).getTime();
+          if (!isNaN(apptTime)) {
+            // Categorize appointments more than 24hrs away as 'Next Day'
+            if (apptTime > Date.now() + 86400000) {
+              nextDay++;
+            } else {
+              today++;
+            }
+          }
         }
       }
     });
+    
     setActiveApptsToday(today);
     setNextDayApptsCount(nextDay);
+    setCompletedCount(completed);
+    setCriticalCount(critical);
   }, [patients]);
   
   // Real-time Lifecycle Monitor: Polls every 10 seconds to auto-expire appointments
@@ -128,15 +133,12 @@ export default function Dashboard() {
         setPatients(updatedPatients);
         
         try {
-          // Flush to async storage
+          // Flush to async storage for local responsiveness
           await AsyncStorage.setItem('meditrack_patients', JSON.stringify(updatedPatients));
           
-          const storedCompleted = await AsyncStorage.getItem('meditrack_completed_appts');
-          const existingCompleted = storedCompleted ? JSON.parse(storedCompleted) : [];
-          const updatedCompleted = [...newlyCompleted, ...existingCompleted];
-          
-          await AsyncStorage.setItem('meditrack_completed_appts', JSON.stringify(updatedCompleted));
-          setCompletedAppts(updatedCompleted);
+          // Note: In a real app, you would also trigger individual updatePatient(p) 
+          // calls here if you want these "Completed" states to hit the Cloud DB immediately.
+          // For now, we at least ensure the dashboard list is unified.
         } catch (e) {
           console.error("Failed to migrate completed appointments", e);
         }
@@ -180,7 +182,7 @@ export default function Dashboard() {
   const getDisplayedPatients = () => {
     let list = [];
     if (activeView === 'completed') {
-      list = [...completedAppts];
+      list = patients.filter(p => p.nextAppointment === 'Completed');
     } else if (activeView === 'nextDay') {
       list = patients.filter(p => {
         if (!p.nextAppointment || p.nextAppointment === 'Pending' || p.nextAppointment === 'Completed' || p.nextAppointment === 'None') return false;
@@ -188,7 +190,8 @@ export default function Dashboard() {
         return !isNaN(apptTime) && apptTime > Date.now() + 86400000;
       });
     } else {
-      list = [...patients];
+      // Recent View shows active patients only
+      list = patients.filter(p => p.nextAppointment !== 'Completed');
     }
 
     // Sort priority: Review (1) > Critical (2) > Stable (3) > Others (4)
@@ -240,7 +243,7 @@ export default function Dashboard() {
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.statCard} onPress={() => setActiveView('completed')}>
-              <Text style={[styles.statNumber, { color: '#38A169' }]}>{completedAppts.length}</Text>
+              <Text style={[styles.statNumber, { color: '#38A169' }]}>{completedCount}</Text>
               <Text style={styles.statLabel}>Completed</Text>
             </TouchableOpacity>
 
@@ -251,7 +254,7 @@ export default function Dashboard() {
               }}
             >
               <Text style={[styles.statNumber, { color: '#E53E3E' }]}>
-                {patients.filter(p => p.status === 'Critical').length}
+                {criticalCount}
               </Text>
               <Text style={styles.statLabel}>Critical</Text>
             </TouchableOpacity>
