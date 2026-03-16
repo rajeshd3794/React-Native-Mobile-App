@@ -4,55 +4,70 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { getPatientByUsername, updatePatientAppointment } from '../db/db';
+import { getPatientByUsername, updatePatientAppointment, getAllPatients, Patient } from '../db/db';
 
 export default function PatientRecords() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [patient, setPatient] = useState<any>(null);
+  const [allPatients, setAllPatients] = useState<Patient[]>([]);
+  const [viewMode, setViewMode] = useState<'single' | 'tabular'>('tabular');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const fetchPatientData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     const storedName = params.name as string;
-    if (!storedName) return;
     
     try {
-      const found = await getPatientByUsername(storedName);
-      if (found) {
-        setPatient(found);
-        return;
+      // 1. Fetch All Patients (always needed for tabular or verification)
+      const all = await getAllPatients();
+      setAllPatients(all);
+
+      if (storedName) {
+        setViewMode('single');
+        // 2. Fetch specific patient
+        const found = await getPatientByUsername(storedName);
+        if (found) {
+          setPatient(found);
+        } else {
+          // Fallback if not found in cloud
+          setPatient({
+            name: storedName || 'John Doe',
+            username: storedName || 'patient',
+            age: 30,
+            condition: 'General Checkup',
+            status: 'Stable',
+            bloodType: 'A+',
+            weight: '165 lbs',
+            height: '5\'9"',
+            lastVisit: 'Recent',
+            notes: 'No critical medical history. Regular exercise and balanced diet recommended.'
+          });
+        }
+      } else {
+        setViewMode('tabular');
+        setPatient(null);
       }
     } catch (e) {
-      console.error('Failed to fetch patient data', e);
+      console.error('Failed to fetch data', e);
+    } finally {
+      setLoading(false);
     }
-    
-    // Fallback patient data for mock user if no DB record found
-    setPatient({
-      name: storedName || 'John Doe',
-      username: storedName || 'patient',
-      age: 30,
-      condition: 'General Checkup',
-      status: 'Stable',
-      bloodType: 'A+',
-      weight: '165 lbs',
-      height: '5\'9"',
-      lastVisit: 'Recent',
-      notes: 'No critical medical history. Regular exercise and balanced diet recommended.'
-    });
   }, [params.name]);
 
   // Handle focus (navigation backward)
   useFocusEffect(
     useCallback(() => {
-      fetchPatientData();
-    }, [fetchPatientData])
+      fetchData();
+    }, [fetchData])
   );
 
-  // Handle real-time polling (Handles "Immediate" visibility if patient is on page)
+  // Handle real-time polling
   useEffect(() => {
-    const interval = setInterval(fetchPatientData, 10000); // Polling every 10 seconds
+    const interval = setInterval(fetchData, 15000); 
     return () => clearInterval(interval);
-  }, [fetchPatientData]);
+  }, [fetchData]);
 
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
@@ -82,19 +97,37 @@ export default function PatientRecords() {
     router.push(path as any);
   };
 
-  if (!patient) return null;
+  if (loading && !patient && allPatients.length === 0) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text>Synchronizing Cloud Records...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.patientName}>{patient.name}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.welcomeText}>
+            {viewMode === 'single' ? 'Welcome back,' : 'System Records'}
+          </Text>
+          <Text style={styles.patientName}>
+            {viewMode === 'single' ? patient?.name : 'Patient Database'}
+          </Text>
         </View>
         <View style={styles.headerActions}>
-          {patient.status === 'Critical' && (
+          <TouchableOpacity 
+            style={styles.refreshButton} 
+            onPress={fetchData}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.refreshText}>{loading ? '...' : '🔄 Refresh'}</Text>
+          </TouchableOpacity>
+
+          {viewMode === 'single' && patient?.status === 'Critical' && (
             <TouchableOpacity 
               style={styles.hamburgerButton} 
               onPress={toggleMenu}
@@ -105,8 +138,11 @@ export default function PatientRecords() {
               <View style={styles.hamburgerLine} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.logoutButton} onPress={() => router.replace('/patient-auth')}>
-            <Text style={styles.logoutText}>Log Out</Text>
+          <TouchableOpacity 
+            style={styles.logoutButton} 
+            onPress={() => router.replace(viewMode === 'tabular' ? '/admin' : '/patient-auth')}
+          >
+            <Text style={styles.logoutText}>{viewMode === 'tabular' ? 'Exit' : 'Log Out'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -132,93 +168,145 @@ export default function PatientRecords() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         
-        <View style={styles.bannerCard}>
-          <Text style={styles.bannerTitle}>Your Medical Record</Text>
-          <Text style={styles.bannerSubtitle}>Up to date and synchronized with MediTrack.</Text>
-        </View>
+        {viewMode === 'tabular' ? (
+          <>
+            <View style={styles.bannerCard}>
+              <Text style={styles.bannerTitle}>Clinical Database Sync</Text>
+              <Text style={styles.bannerSubtitle}>Viewing {allPatients.length} live patient records from Cloud.</Text>
+            </View>
 
-        <Text style={styles.sectionTitle}>My Vitals</Text>
-        <View style={styles.vitalsGrid}>
-          <View style={styles.vitalCard}>
-            <Text style={styles.vitalLabel}>Blood Type</Text>
-            <Text style={styles.vitalValue}>{patient.bloodType || 'Unknown'}</Text>
-          </View>
-          <View style={styles.vitalCard}>
-            <Text style={styles.vitalLabel}>Weight</Text>
-            <Text style={styles.vitalValue}>{patient.weight || '--'}</Text>
-          </View>
-          <View style={styles.vitalCard}>
-            <Text style={styles.vitalLabel}>Height</Text>
-            <Text style={styles.vitalValue}>{patient.height || '--'}</Text>
-          </View>
-          <View style={styles.vitalCard}>
-            <Text style={styles.vitalLabel}>Current Status</Text>
-            <Text style={[styles.vitalValue, { color: patient.status === 'Critical' ? '#E53E3E' : patient.status === 'Review' ? '#D69E2E' : '#38A169' }]}>
-              {patient.status || 'Stable'}
-            </Text>
-          </View>
-        </View>
+            <Text style={styles.sectionTitle}>Detailed Records Table</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+              <View style={styles.tableContainer}>
+                {/* Header */}
+                <View style={styles.tableRowHeader}>
+                  <Text style={[styles.col, styles.colId]}>ID</Text>
+                  <Text style={[styles.col, styles.colName]}>Name</Text>
+                  <Text style={[styles.col, styles.colUser]}>Username</Text>
+                  <Text style={[styles.col, styles.colEmail]}>Email</Text>
+                  <Text style={[styles.col, styles.colDob]}>DOB</Text>
+                  <Text style={[styles.col, styles.colPass]}>Password</Text>
+                  <Text style={[styles.col, styles.colAppt]}>Next Appt</Text>
+                  <Text style={[styles.col, styles.colAge]}>Age</Text>
+                  <Text style={[styles.col, styles.colCond]}>Condition</Text>
+                  <Text style={[styles.col, styles.colStat]}>Status</Text>
+                </View>
 
-        <Text style={styles.sectionTitle}>Doctor Notes</Text>
-        <View style={styles.notesCard}>
-          <Text style={styles.notesText}>{patient.notes || 'No recent clinical notes available.'}</Text>
-        </View>
-
-        <Text style={styles.sectionTitle}>Request Appointment</Text>
-        <View style={styles.notesCard}>
-          <View>
-            <Text style={styles.notesText}>Please select a date and time to request an upcoming appointment.</Text>
-            {Platform.OS === 'web' ? (
-              React.createElement('input', {
-                type: 'datetime-local',
-                value: new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16),
-                onChange: (e: any) => {
-                  if (e.target.value) setDate(new Date(e.target.value));
-                },
-                style: {
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid #E2E8F0',
-                  fontSize: '16px',
-                  marginTop: '16px',
-                  backgroundColor: '#EDF2F7',
-                  color: '#2D3748',
-                  width: '100%',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }
-              })
-            ) : (
-              <>
-                <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPicker(true)}>
-                  <Text style={styles.datePickerBtnText}>{date.toLocaleString()}</Text>
-                </TouchableOpacity>
-                
-                {showPicker && (
-                  <DateTimePicker
-                    value={date}
-                    mode="datetime"
-                    display="default"
-                    onChange={onChangeDate}
-                    minimumDate={new Date()}
-                  />
-                )}
-              </>
-            )}
-
-            {requestSent ? (
-              <Text style={[styles.notesText, { color: '#38A169', marginTop: 16, fontWeight: '700' }]}>
-                Appointment Request Sent for {patient.nextAppointment}
-              </Text>
-            ) : (
-              <View style={[styles.actionsContainer, { marginTop: 16 }]}>
-                <TouchableOpacity style={styles.primaryAction} onPress={handleRequestAppointment}>
-                  <Text style={styles.primaryActionText}>Confirm Request</Text>
-                </TouchableOpacity>
+                {/* Body */}
+                {allPatients.map((p, idx) => (
+                  <TouchableOpacity 
+                    key={p.id || idx} 
+                    style={styles.tableRow}
+                    onPress={() => router.push({ pathname: '/patient-records', params: { name: p.username } })}
+                  >
+                    <Text style={[styles.col, styles.colId]}>{p.id || '-'}</Text>
+                    <Text style={[styles.col, styles.colName]}>{p.name}</Text>
+                    <Text style={[styles.col, styles.colUser]}>{p.username}</Text>
+                    <Text style={[styles.col, styles.colEmail]}>{p.email}</Text>
+                    <Text style={[styles.col, styles.colDob]}>{p.dob}</Text>
+                    <Text style={[styles.col, styles.colPass]}>{p.password}</Text>
+                    <Text style={[styles.col, styles.colAppt]}>{p.nextAppointment || 'None'}</Text>
+                    <Text style={[styles.col, styles.colAge]}>{p.age || '-'}</Text>
+                    <Text style={[styles.col, styles.colCond]}>{p.condition || '-'}</Text>
+                    <Text style={[styles.col, styles.colStat, { fontWeight: '800', color: p.status === 'Critical' ? '#E53E3E' : p.status === 'Review' ? '#D69E2E' : '#38A169' }]}>
+                      {p.status || 'Stable'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            )}
-          </View>
-        </View>
+            </ScrollView>
+          </>
+        ) : (
+          <>
+            <View style={styles.bannerCard}>
+              <Text style={styles.bannerTitle}>Your Medical Record</Text>
+              <Text style={styles.bannerSubtitle}>Up to date and synchronized with MediTrack.</Text>
+            </View>
+
+            <Text style={styles.sectionTitle}>My Vitals</Text>
+            <View style={styles.vitalsGrid}>
+              <View style={styles.vitalCard}>
+                <Text style={styles.vitalLabel}>Blood Type</Text>
+                <Text style={styles.vitalValue}>{patient?.bloodType || 'Unknown'}</Text>
+              </View>
+              <View style={styles.vitalCard}>
+                <Text style={styles.vitalLabel}>Weight</Text>
+                <Text style={styles.vitalValue}>{patient?.weight || '--'}</Text>
+              </View>
+              <View style={styles.vitalCard}>
+                <Text style={styles.vitalLabel}>Height</Text>
+                <Text style={styles.vitalValue}>{patient?.height || '--'}</Text>
+              </View>
+              <View style={styles.vitalCard}>
+                <Text style={styles.vitalLabel}>Current Status</Text>
+                <Text style={[styles.vitalValue, { color: patient?.status === 'Critical' ? '#E53E3E' : patient?.status === 'Review' ? '#D69E2E' : '#38A169' }]}>
+                  {patient?.status || 'Stable'}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.sectionTitle}>Doctor Notes</Text>
+            <View style={styles.notesCard}>
+              <Text style={styles.notesText}>{patient?.notes || 'No recent clinical notes available.'}</Text>
+            </View>
+
+            <Text style={styles.sectionTitle}>Request Appointment</Text>
+            <View style={styles.notesCard}>
+              <View>
+                <Text style={styles.notesText}>Please select a date and time to request an upcoming appointment.</Text>
+                {Platform.OS === 'web' ? (
+                  React.createElement('input', {
+                    type: 'datetime-local',
+                    value: new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16),
+                    onChange: (e: any) => {
+                      if (e.target.value) setDate(new Date(e.target.value));
+                    },
+                    style: {
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #E2E8F0',
+                      fontSize: '16px',
+                      marginTop: '16px',
+                      backgroundColor: '#EDF2F7',
+                      color: '#2D3748',
+                      width: '100%',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }
+                  })
+                ) : (
+                  <>
+                    <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPicker(true)}>
+                      <Text style={styles.datePickerBtnText}>{date.toLocaleString()}</Text>
+                    </TouchableOpacity>
+                    
+                    {showPicker && (
+                      <DateTimePicker
+                        value={date}
+                        mode="datetime"
+                        display="default"
+                        onChange={onChangeDate}
+                        minimumDate={new Date()}
+                      />
+                    )}
+                  </>
+                )}
+
+                {requestSent ? (
+                  <Text style={[styles.notesText, { color: '#38A169', marginTop: 16, fontWeight: '700' }]}>
+                    Appointment Request Sent for {patient?.nextAppointment}
+                  </Text>
+                ) : (
+                  <View style={[styles.actionsContainer, { marginTop: 16 }]}>
+                    <TouchableOpacity style={styles.primaryAction} onPress={handleRequestAppointment}>
+                      <Text style={styles.primaryActionText}>Confirm Request</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+          </>
+        )}
 
         <View style={{height: 40}} />
       </ScrollView>
@@ -426,4 +514,52 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2D3748',
   },
+  refreshButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#EBF8FF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BEE3F8',
+  },
+  refreshText: {
+    color: '#3182CE',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tableContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tableRowHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#EDF2F7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingVertical: 12,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F7FAFC',
+    paddingVertical: 12,
+  },
+  col: {
+    fontSize: 13,
+    color: '#4A5568',
+    paddingHorizontal: 12,
+  },
+  colId: { width: 40 },
+  colName: { width: 140, fontWeight: '700', color: '#2D3748' },
+  colUser: { width: 100 },
+  colEmail: { width: 180 },
+  colDob: { width: 100 },
+  colPass: { width: 100 },
+  colAppt: { width: 140 },
+  colAge: { width: 60 },
+  colCond: { width: 140 },
+  colStat: { width: 90 },
 });
