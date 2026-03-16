@@ -7,6 +7,26 @@ export const sanitizeInput = (val: string): string => {
   return val.replace(/[<>]/g, '').trim(); 
 };
 
+// --- Reversible Encryption Helpers ---
+// Scrambles passwords for storage, but allows decryption for UI display as requested.
+const PWD_SHIFT = 5;
+export const encryptPassword = (pwd: string): string => {
+  if (!pwd || pwd.startsWith('v2_')) return pwd; // Avoid double encryption
+  return 'v2_' + pwd.split('').map(c => (c.charCodeAt(0) + PWD_SHIFT).toString(16).padStart(2, '0')).join('');
+};
+
+export const decryptPassword = (enc: string): string => {
+  if (!enc || !enc.startsWith('v2_')) return enc;
+  const hex = enc.substring(3);
+  let res = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    const code = parseInt(hex.substring(i, i + 2), 16);
+    if (isNaN(code)) return enc; // Fallback
+    res += String.fromCharCode(code - PWD_SHIFT);
+  }
+  return res;
+};
+
 let dbPromise: Promise<any> | null = null;
 
 async function getDb() {
@@ -68,7 +88,7 @@ async function getDb() {
           if (!existingPatient) {
             await db.runAsync(
               'INSERT INTO Patients (name, username, email, dob, password, nextAppointment, age, condition, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-              ['John Doe', 'patient', 'patient@example.com', '01/01/1990', 'password123', 'Oct 15, 10:00 AM', 34, 'General Checkup', 'Stable', Date.now()]
+              ['John Doe', 'patient', 'patient@example.com', '01/01/1990', encryptPassword('password123'), 'Oct 15, 10:00 AM', 34, 'General Checkup', 'Stable', Date.now()]
             );
           }
         } catch (e) {}
@@ -131,7 +151,7 @@ const mapDoctorToCloud = (doc: Doctor) => ({
   username: sanitizeInput(doc.username),
   email: sanitizeInput(doc.email),
   designation: sanitizeInput(doc.designation),
-  password: sanitizeInput(doc.password),
+  password: encryptPassword(doc.password),
   timestamp: doc.timestamp || Date.now(),
   timezone: doc.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
 });
@@ -143,7 +163,7 @@ const mapCloudToDoctor = (row: any): Doctor => ({
   username: row.username,
   email: row.email,
   designation: row.designation,
-  password: row.password,
+  password: decryptPassword(row.password),
   timestamp: row.timestamp,
   timezone: row.timezone
 });
@@ -153,7 +173,7 @@ const mapPatientToCloud = (pat: Patient) => ({
   username: pat.username,
   email: pat.email,
   dob: pat.dob,
-  password: pat.password,
+  password: encryptPassword(pat.password),
   nextappointment: pat.nextAppointment || 'Pending',
   age: pat.age || 30,
   condition: pat.condition || 'General Checkup',
@@ -167,7 +187,7 @@ const mapCloudToPatient = (row: any): Patient => ({
   username: row.username,
   email: row.email,
   dob: row.dob,
-  password: row.password,
+  password: decryptPassword(row.password),
   nextAppointment: row.nextappointment,
   age: row.age,
   condition: row.condition,
@@ -218,7 +238,9 @@ export async function getDoctorByUsername(username: string): Promise<Doctor | nu
   try {
     const db = await getDb();
     if (db) {
-      return await db.getFirstAsync('SELECT * FROM Doctors WHERE username = ?', [sanitizeInput(username)]) as Doctor | null;
+      const doc = await db.getFirstAsync('SELECT * FROM Doctors WHERE username = ?', [sanitizeInput(username)]) as Doctor | null;
+      if (doc) doc.password = decryptPassword(doc.password);
+      return doc;
     }
   } catch (e) {
     console.warn('Local getDoctorByUsername failed:', e);
@@ -242,7 +264,8 @@ export async function getAllDoctors(): Promise<Doctor[]> {
     const db = await getDb();
     if (db) {
       console.log('Fetching doctors from local storage...');
-      return await db.getAllAsync('SELECT * FROM Doctors') as Doctor[];
+      const rows = await db.getAllAsync('SELECT * FROM Doctors') as Doctor[];
+      return rows.map(r => ({...r, password: decryptPassword(r.password)}));
     }
   } catch (e) {
     console.warn('Local getAllDoctors failed:', e);
@@ -310,7 +333,9 @@ export async function getDoctorByEmail(email: string): Promise<Doctor | null> {
   try {
     const db = await getDb();
     if (db) {
-      return await db.getFirstAsync('SELECT * FROM Doctors WHERE email = ?', [sanitizeInput(email)]) as Doctor | null;
+      const doc = await db.getFirstAsync('SELECT * FROM Doctors WHERE email = ?', [sanitizeInput(email)]) as Doctor | null;
+      if (doc) doc.password = decryptPassword(doc.password);
+      return doc;
     }
   } catch (e) {
     console.warn('Local getDoctorByEmail failed:', e);
@@ -334,10 +359,12 @@ export async function getDoctorByNameAndEmail(firstName: string, lastName: strin
   try {
     const db = await getDb();
     if (db) {
-      return await db.getFirstAsync(
+      const doc = await db.getFirstAsync(
         'SELECT * FROM Doctors WHERE firstName = ? AND lastName = ? AND email = ?',
         [firstName, lastName, email]
       ) as Doctor | null;
+      if (doc) doc.password = decryptPassword(doc.password);
+      return doc;
     }
   } catch (e) {
     console.warn('Local getDoctorByNameAndEmail failed:', e);
@@ -349,7 +376,7 @@ export async function updateDoctorPassword(username: string, newPassword: string
   // 1. Sync to Cloud
   const { error } = await supabase
     .from('doctors')
-    .update({ password: sanitizeInput(newPassword) })
+    .update({ password: encryptPassword(newPassword) })
     .eq('username', sanitizeInput(username));
   
   if (error) {
@@ -362,7 +389,7 @@ export async function updateDoctorPasswordByEmail(email: string, newPassword: st
   // 1. Sync to Cloud
   const { error } = await supabase
     .from('doctors')
-    .update({ password: newPassword })
+    .update({ password: encryptPassword(newPassword) })
     .eq('email', email);
   
   if (error) {
@@ -386,21 +413,21 @@ export async function addPatient(patient: Patient) {
   try {
     const db = await getDb();
     if (db) {
-      await db.runAsync(
-        'INSERT INTO Patients (name, username, email, dob, password, nextAppointment, age, condition, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          patient.name,
-          patient.username,
-          patient.email,
-          patient.dob,
-          patient.password,
-          patient.nextAppointment || 'Pending',
-          patient.age || 30,
-          patient.condition || 'General Checkup',
-          patient.status || 'New',
-          patient.timestamp || Date.now()
-        ]
-      );
+          await db.runAsync(
+            'INSERT INTO Patients (name, username, email, dob, password, nextAppointment, age, condition, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              patient.name,
+              patient.username,
+              patient.email,
+              patient.dob,
+              encryptPassword(patient.password),
+              patient.nextAppointment || 'Pending',
+              patient.age || 30,
+              patient.condition || 'General Checkup',
+              patient.status || 'New',
+              patient.timestamp || Date.now()
+            ]
+          );
     }
   } catch (err) {
     console.warn('SQLite local cache failed (Patients):', err);
@@ -422,7 +449,9 @@ export async function getPatientByUsername(username: string): Promise<Patient | 
   try {
     const db = await getDb();
     if (db) {
-      return await db.getFirstAsync('SELECT * FROM Patients WHERE username = ?', [username]) as Patient | null;
+      const pat = await db.getFirstAsync('SELECT * FROM Patients WHERE username = ?', [username]) as Patient | null;
+      if (pat) pat.password = decryptPassword(pat.password);
+      return pat;
     }
   } catch (e) {
     console.warn('Local getPatientByUsername failed:', e);
@@ -444,7 +473,9 @@ export async function getPatientByEmail(email: string): Promise<Patient | null> 
   try {
     const db = await getDb();
     if (db) {
-      return await db.getFirstAsync('SELECT * FROM Patients WHERE email = ?', [email]) as Patient | null;
+      const pat = await db.getFirstAsync('SELECT * FROM Patients WHERE email = ?', [email]) as Patient | null;
+      if (pat) pat.password = decryptPassword(pat.password);
+      return pat;
     }
   } catch (e) {
     console.warn('Local getPatientByEmail failed:', e);
@@ -456,7 +487,7 @@ export async function updatePatientPassword(username: string, newPassword: strin
   // 1. Sync to Cloud
   const { error } = await supabase
     .from('patients')
-    .update({ password: newPassword })
+    .update({ password: encryptPassword(newPassword) })
     .eq('username', username);
   
   if (error) {
@@ -468,7 +499,7 @@ export async function updatePatientPassword(username: string, newPassword: strin
   try {
     const db = await getDb();
     if (db) {
-      await db.runAsync('UPDATE Patients SET password = ? WHERE username = ?', [newPassword, username]);
+      await db.runAsync('UPDATE Patients SET password = ? WHERE username = ?', [encryptPassword(newPassword), username]);
     }
   } catch (e) {
     console.warn('Local updatePatientPassword failed:', e);
@@ -490,7 +521,8 @@ export async function getAllPatients(): Promise<Patient[]> {
   try {
     const db = await getDb();
     if (db) {
-      return await db.getAllAsync('SELECT * FROM Patients ORDER BY timestamp DESC') as Patient[];
+      const rows = await db.getAllAsync('SELECT * FROM Patients ORDER BY timestamp DESC') as Patient[];
+      return rows.map(r => ({...r, password: decryptPassword(r.password)}));
     }
   } catch (e) {
     console.warn('Local getAllPatients failed:', e);
@@ -515,11 +547,12 @@ export async function updatePatient(patient: Patient): Promise<void> {
     const db = await getDb();
     if (db) {
       await db.runAsync(
-        'UPDATE Patients SET name = ?, email = ?, dob = ?, nextAppointment = ?, age = ?, condition = ?, status = ? WHERE username = ?',
+        'UPDATE Patients SET name = ?, email = ?, dob = ?, password = ?, nextAppointment = ?, age = ?, condition = ?, status = ? WHERE username = ?',
         [
           patient.name,
           patient.email,
           patient.dob,
+          encryptPassword(patient.password),
           patient.nextAppointment ?? null,
           patient.age ?? null,
           patient.condition ?? null,
@@ -607,13 +640,19 @@ export async function verifyAdmin(username: string, password: string): Promise<b
   // Check the Doctors table in Supabase for matching credentials
   const { data, error } = await supabase
     .from('doctors')
-    .select('id')
-    .eq('username', username.trim().toLowerCase()) // Match lowercase username
-    .eq('password', password) // Exact password match
+    .select('id, password')
+    .eq('username', username.trim().toLowerCase()) 
     .single();
 
   if (error || !data) {
     console.warn('Admin/Doctor cloud verification failed:', error?.message);
+    return false;
+  }
+
+  // Decrypt and check
+  const realPassword = decryptPassword(data.password);
+  if (realPassword !== password) {
+    console.warn('Password mismatch for admin:', username);
     return false;
   }
 
