@@ -24,7 +24,7 @@ export default function PatientAuth() {
         // Check password
         if (patient.password === password) {
           setError('');
-          router.replace({ pathname: '/patient-records', params: { name: patient.name } });
+          router.replace(`/patient-records/${patient.name}`);
           return;
         } else {
           setError('Incorrect password.');
@@ -40,7 +40,7 @@ export default function PatientAuth() {
     // Mock Authentication Logic fallback (matching seeded data)
     if (username === 'patient' && password === 'password123') {
       setError('');
-      router.replace({ pathname: '/patient-records', params: { name: 'John Doe' } });
+      router.replace(`/patient-records/John Doe`);
       return;
     }
 
