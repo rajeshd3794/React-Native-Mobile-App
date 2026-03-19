@@ -14,7 +14,7 @@ export default function Dashboard() {
   const [nextDayApptsCount, setNextDayApptsCount] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
   const [criticalCount, setCriticalCount] = useState(0);
-  const [activeView, setActiveView] = useState<'recent' | 'completed' | 'nextDay'>('recent');
+  const [activeView, setActiveView] = useState<'recent' | 'completed' | 'nextDay' | 'critical'>('recent');
   const [selectedDate, setSelectedDate] = useState(new Date().getDate());
   const [currentWeek, setCurrentWeek] = useState<any[]>([]);
   
@@ -194,6 +194,9 @@ export default function Dashboard() {
         const apptTime = new Date(p.nextAppointment).getTime();
         return !isNaN(apptTime) && apptTime > Date.now() + 86400000;
       });
+    } else if (activeView === 'critical') {
+      // Critical View shows all patients with Critical status (not completed)
+      list = patients.filter(p => p.status === 'Critical' && p.nextAppointment !== 'Completed');
     } else {
       // Recent View shows active patients only, filtered by selected date if applicable
       list = patients.filter(p => p.nextAppointment !== 'Completed');
@@ -262,7 +265,7 @@ export default function Dashboard() {
             <TouchableOpacity 
               style={styles.statCard} 
               onPress={() => {
-                setActiveView('recent');
+                setActiveView('critical');
               }}
             >
               <Text style={[styles.statNumber, { color: '#E53E3E' }]}>
@@ -278,6 +281,7 @@ export default function Dashboard() {
             <Text style={styles.sectionTitle}>
               {activeView === 'recent' ? 'Recent Patients' : 
                activeView === 'completed' ? 'Completed Appointments' : 
+               activeView === 'critical' ? 'Critical Patient Records' : 
                'Next Day Appointments'}
             </Text>
             <Text style={styles.dateSubtext}>{getCurrentMonthYear()}</Text>

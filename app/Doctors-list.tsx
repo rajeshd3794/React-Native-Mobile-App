@@ -31,6 +31,7 @@ export default function DoctorsList() {
     try {
       // Step 2: Re-fetch the data from the local table
       const data = await getAllDoctors();
+      data.sort((a, b) => (a.id || 0) - (b.id || 0));
       setDoctors(data);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {
@@ -104,6 +105,7 @@ export default function DoctorsList() {
           <View style={styles.table}>
             {/* Table Header */}
             <View style={[styles.tableRow, styles.tableHeader]}>
+               <Text style={[styles.cell, styles.headerCell, { width: 60 }]}>ID</Text>
                <Text style={[styles.cell, styles.headerCell, { width: 120 }]}>First Name</Text>
                <Text style={[styles.cell, styles.headerCell, { width: 120 }]}>Last Name</Text>
                <Text style={[styles.cell, styles.headerCell, { width: 120 }]}>Username</Text>
@@ -118,6 +120,7 @@ export default function DoctorsList() {
             ) : (
               doctors.map((doc) => (
                 <View key={doc.username} style={styles.tableRow}>
+                  <Text style={[styles.cell, { width: 60 }]}>{doc.id || '-'}</Text>
                   <Text style={[styles.cell, { width: 120 }]}>{doc.firstName}</Text>
                   <Text style={[styles.cell, { width: 120 }]}>{doc.lastName}</Text>
                   <Text style={[styles.cell, { width: 120 }]}>{doc.username}</Text>
@@ -244,7 +247,7 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   tableHeader: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#3182CE',
   },
   cell: {
     paddingHorizontal: 16,
@@ -254,7 +257,7 @@ const styles = StyleSheet.create({
   },
   headerCell: {
     fontWeight: '700',
-    color: '#1A365D',
+    color: '#FFFFFF',
   },
   passwordText: {
     color: '#CBD5E0',

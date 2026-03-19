@@ -24,6 +24,7 @@ export default function PatientRecords() {
     try {
       // 1. Fetch All Patients (always needed for tabular or verification)
       const all = await getAllPatients();
+      all.sort((a, b) => (a.id || 0) - (b.id || 0));
       setAllPatients(all);
 
       if (storedName) {
@@ -208,17 +209,17 @@ export default function PatientRecords() {
               <View style={styles.tableContainer}>
                 {/* Header */}
                 <View style={styles.tableRowHeader}>
-                  <Text style={[styles.col, styles.colId]}>ID</Text>
-                  <Text style={[styles.col, styles.colName]}>Name</Text>
-                  <Text style={[styles.col, styles.colUser]}>Username</Text>
-                  <Text style={[styles.col, styles.colEmail]}>Email</Text>
-                  <Text style={[styles.col, styles.colDob]}>DOB</Text>
-                  <Text style={[styles.col, styles.colPass]}>Password</Text>
-                  <Text style={[styles.col, styles.colAppt]}>Next Appt</Text>
-                  <Text style={[styles.col, styles.colAge]}>Age</Text>
-                  <Text style={[styles.col, styles.colCond]}>Condition</Text>
-                  <Text style={[styles.col, styles.colStat]}>Status</Text>
-                  <Text style={[styles.col, styles.colAction]}>Action</Text>
+                  <Text style={[styles.col, styles.colId, { color: '#FFFFFF' }]}>ID</Text>
+                  <Text style={[styles.col, styles.colName, { color: '#FFFFFF' }]}>Name</Text>
+                  <Text style={[styles.col, styles.colUser, { color: '#FFFFFF' }]}>Username</Text>
+                  <Text style={[styles.col, styles.colEmail, { color: '#FFFFFF' }]}>Email</Text>
+                  <Text style={[styles.col, styles.colDob, { color: '#FFFFFF' }]}>DOB</Text>
+                  <Text style={[styles.col, styles.colPass, { color: '#FFFFFF' }]}>Password</Text>
+                  <Text style={[styles.col, styles.colAppt, { color: '#FFFFFF' }]}>Next Appt</Text>
+                  <Text style={[styles.col, styles.colAge, { color: '#FFFFFF' }]}>Age</Text>
+                  <Text style={[styles.col, styles.colCond, { color: '#FFFFFF' }]}>Condition</Text>
+                  <Text style={[styles.col, styles.colStat, { color: '#FFFFFF' }]}>Status</Text>
+                  <Text style={[styles.col, styles.colAction, { color: '#FFFFFF' }]}>Action</Text>
                 </View>
 
                 {/* Body */}
@@ -675,7 +676,7 @@ const styles = StyleSheet.create({
   },
   tableRowHeader: {
     flexDirection: 'row',
-    backgroundColor: '#EDF2F7',
+    backgroundColor: '#3182CE',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingVertical: 12,
