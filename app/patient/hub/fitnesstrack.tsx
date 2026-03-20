@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Pla
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useActivityTracker } from '../../../hooks/useActivityTracker';
 
 const { width } = Dimensions.get('window');
 
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
+  const { steps, calories, duration, isWalking, resetActivity, simulateWalk } = useActivityTracker();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -188,6 +190,12 @@ export default function PatientFitnessTrack() {
     }
   };
 
+  const formatDuration = (s: number) => {
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${mins}m ${secs}s`;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -196,27 +204,39 @@ export default function PatientFitnessTrack() {
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Fitness Track</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={resetActivity}>
+          <Text style={{color: '#F56565', fontWeight: '700'}}>Reset</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Activity Summary */}
         <View style={styles.summaryCard}>
-          <Text style={styles.cardTitle}>Activity Summary</Text>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+            <Text style={styles.cardTitle}>Activity Summary</Text>
+            {isWalking && <Text style={{fontSize: 12, color: '#48BB78', fontWeight: '800'}}>🏃 WALKING...</Text>}
+          </View>
           <View style={styles.summaryGrid}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>8,432</Text>
+              <Text style={styles.summaryValue}>{steps.toLocaleString()}</Text>
               <Text style={styles.summaryLabel}>Steps</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>450</Text>
+              <Text style={styles.summaryValue}>{calories}</Text>
               <Text style={styles.summaryLabel}>Calories</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>45m</Text>
+              <Text style={styles.summaryValue}>{formatDuration(duration)}</Text>
               <Text style={styles.summaryLabel}>Duration</Text>
             </View>
           </View>
+          
+          <TouchableOpacity 
+            style={styles.testStepButton} 
+            onPress={() => simulateWalk(50)}
+          >
+            <Text style={styles.testStepText}>🏃 Simulate Walking (+50 steps)</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Real-time Metrics (Graph) */}
@@ -302,11 +322,11 @@ export default function PatientFitnessTrack() {
         <View style={styles.goalsCard}>
           <View style={styles.goalItem}>
             <View style={styles.goalInfo}>
-              <Text style={styles.goalName}>Daily Step Target</Text>
-              <Text style={styles.goalPercent}>84%</Text>
+              <Text style={styles.goalName}>Daily Step Target (10,000)</Text>
+              <Text style={styles.goalPercent}>{Math.min(Math.round((steps / 10000) * 100), 100)}%</Text>
             </View>
             <View style={styles.meterBase}>
-              <View style={[styles.meterFill, { width: '84%', backgroundColor: '#48BB78' }]} />
+              <View style={[styles.meterFill, { width: `${Math.min((steps / 10000) * 100, 100)}%`, backgroundColor: '#48BB78' }]} />
             </View>
           </View>
           <View style={[styles.goalItem, { marginTop: 16 }]}>
@@ -424,7 +444,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
     color: '#3182CE',
   },
@@ -432,6 +452,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#718096',
     marginTop: 4,
+  },
+  testStepButton: {
+    marginTop: 16,
+    backgroundColor: '#EDF2F7',
+    padding: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  testStepText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3182CE',
   },
   sectionTitle: {
     fontSize: 18,

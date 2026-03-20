@@ -4,10 +4,12 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPatientByUsername, Patient } from '../../../db/db';
+import { useActivityTracker } from '../../../hooks/useActivityTracker';
 
 export default function PatientHub() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { steps, calories } = useActivityTracker();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -104,12 +106,12 @@ export default function PatientHub() {
             </View>
             <View style={styles.statBox}>
               <Text style={styles.statEmoji}>🔥</Text>
-              <Text style={styles.statValue}>450</Text>
+              <Text style={styles.statValue}>{calories}</Text>
               <Text style={styles.statLabel}>Calories</Text>
             </View>
             <View style={styles.statBox}>
               <Text style={styles.statEmoji}>👣</Text>
-              <Text style={styles.statValue}>8,432</Text>
+              <Text style={styles.statValue}>{steps.toLocaleString()}</Text>
               <Text style={styles.statLabel}>Steps</Text>
             </View>
           </View>
