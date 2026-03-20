@@ -8,23 +8,35 @@ import { getPatientByUsername, updatePatientAppointment, Patient, updatePatient 
 
 export default function PatientSingleRecord() {
   const router = useRouter();
-  const { patient: patientParam } = useLocalSearchParams();
+  const params = useLocalSearchParams();
   const [patient, setPatient] = useState<any>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!patientParam) return;
     setLoading(true);
     try {
-      const found = await getPatientByUsername(patientParam as string);
+      // 1. Check query param (for doctor access)
+      let username = params.patient as string;
+      
+      // 2. Fallback to AsyncStorage (for patient session)
+      if (!username) {
+        username = (await AsyncStorage.getItem('logged_in_patient')) || '';
+      }
+
+      if (!username) {
+        console.warn('No patient context found');
+        return;
+      }
+
+      const found = await getPatientByUsername(username);
       if (found && typeof found === 'object') {
         setPatient(found);
       } else {
         // Fallback for demo/test purposes
         setPatient({
-          name: name || 'Patient',
-          username: name || 'patient',
+          name: username || 'Patient',
+          username: username || 'patient',
           age: 30,
           condition: 'General Checkup',
           status: 'Stable',
@@ -40,7 +52,7 @@ export default function PatientSingleRecord() {
     } finally {
       setLoading(false);
     }
-  }, [name]);
+  }, [params.patient]);
 
   useFocusEffect(
     useCallback(() => {
@@ -92,16 +104,10 @@ export default function PatientSingleRecord() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.patientName}>{patient?.name || name}</Text>
+          <Text style={styles.patientName}>{patient?.name || (params.patient as string) || 'User'}</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={styles.refreshButton} 
-            onPress={fetchData}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.refreshText}>{loading ? '...' : '🔄 Refresh'}</Text>
-          </TouchableOpacity>
+
 
           {patient?.status === 'Critical' && (
             <TouchableOpacity 
@@ -431,17 +437,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2D3748',
   },
-  refreshButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#EBF8FF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BEE3F8',
-  },
-  refreshText: {
-    color: '#3182CE',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+
 });

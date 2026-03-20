@@ -136,7 +136,7 @@ export default function PatientRecordsIndex() {
                         onChangeText={(t) => setRowForm({...rowForm, name: t})} 
                       />
                     ) : (
-                      <TouchableOpacity onPress={() => router.push(`/patient-records/${p.username}`)}>
+                      <TouchableOpacity onPress={() => router.push(`/patient-records/patient-info?patient=${p.username}` as any)}>
                         <Text style={{ fontWeight: '700', color: '#2D3748' }}>{p.name}</Text>
                       </TouchableOpacity>
                     )}

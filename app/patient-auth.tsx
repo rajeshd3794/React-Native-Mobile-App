@@ -26,7 +26,7 @@ export default function PatientAuth() {
         if (patient.password === password) {
           setError('');
           await AsyncStorage.setItem('logged_in_patient', patient.username);
-          router.replace(`/patient-records/${patient.username}`);
+          router.replace(`/patient-records/patient-info`);
           return;
         } else {
           setError('Incorrect password.');
@@ -43,7 +43,7 @@ export default function PatientAuth() {
     if (username === 'patient' && password === 'password123') {
       setError('');
       await AsyncStorage.setItem('logged_in_patient', 'patient');
-      router.replace(`/patient-records/John Doe`);
+      router.replace(`/patient-records/patient-info`);
       return;
     }
 
