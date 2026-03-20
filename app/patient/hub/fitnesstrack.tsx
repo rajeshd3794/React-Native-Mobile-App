@@ -15,6 +15,7 @@ export default function PatientFitnessTrack() {
   const [bpm, setBpm] = useState(75);
   const [heartRateHistory, setHeartRateHistory] = useState([65, 72, 68, 85, 92, 78, 70, 68, 75, 82]);
   const [measurementProgress, setMeasurementProgress] = useState(0);
+  const [flashSupported, setFlashSupported] = useState(true);
   
   // Web-specific PPG Refs
   const videoRef = useRef<any>(null);
@@ -28,23 +29,36 @@ export default function PatientFitnessTrack() {
     if (Platform.OS === 'web' && isMeasuring) {
       const startWebPPG = async () => {
         try {
-          // Use environment (back) camera for PPG as it has the flash
           const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment' } 
+            video: { 
+              facingMode: 'environment',
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            } 
           });
           
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
             videoRef.current.play();
             
-            // Attempt to turn on Flash (Torch) on supported browsers (Chrome/Android)
-            const track = stream.getVideoTracks()[0];
-            const capabilities = (track as any).getCapabilities?.() || {};
-            if (capabilities.torch) {
-              await track.applyConstraints({
-                advanced: [{ torch: true }]
-              } as any);
-            }
+            // Wait for tracks to be ready
+            setTimeout(async () => {
+              const track = stream.getVideoTracks()[0];
+              try {
+                const capabilities = (track as any).getCapabilities?.() || {};
+                if (capabilities.torch) {
+                   setFlashSupported(true);
+                   await track.applyConstraints({
+                     advanced: [{ torch: true }]
+                   } as any);
+                } else {
+                   setFlashSupported(false);
+                }
+              } catch (e) {
+                console.warn("Torch failed:", e);
+                setFlashSupported(false);
+              }
+            }, 500);
             
             processFrames();
           }
@@ -256,7 +270,13 @@ export default function PatientFitnessTrack() {
               <View style={styles.webSensor}>
                 <video ref={videoRef} style={{ display: 'none' }} />
                 <canvas ref={canvasRef} width="100" height="100" style={styles.miniCanvas} />
-                <Text style={styles.sensorHint}>Keep your face steady in the light</Text>
+                <Text style={styles.sensorHint}>Keep your finger steady over the back camera</Text>
+                {!flashSupported && (
+                  <View style={styles.flashWarning}>
+                    <Text style={styles.flashWarningText}>⚠️ Browser doesn't support auto-flash.</Text>
+                    <Text style={[styles.flashWarningText, { fontSize: 11, marginTop: 2 }]}>Please turn on your flashlight manually for accuracy.</Text>
+                  </View>
+                )}
               </View>
             ) : (
               <View style={styles.mobileSensor}>
@@ -525,6 +545,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  flashWarning: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: 'rgba(245, 101, 101, 0.2)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F56565',
+    width: '100%',
+  },
+  flashWarningText: {
+    color: '#FEB2B2',
+    fontSize: 12,
+    fontWeight: '700',
     textAlign: 'center',
   },
   progressContainer: {
