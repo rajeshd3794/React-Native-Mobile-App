@@ -10,7 +10,7 @@ const { width } = Dimensions.get('window');
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity } = useActivityTracker();
+  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus } = useActivityTracker();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -25,6 +25,28 @@ export default function PatientFitnessTrack() {
   const animationRef = useRef<number | null>(null);
 
   const maxHR = 120;
+
+  const [stepPulse, setStepPulse] = useState(false);
+
+  // Pulse effect when steps increase
+  useEffect(() => {
+    if (steps > 0) {
+      setStepPulse(true);
+      const timer = setTimeout(() => setStepPulse(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [steps]);
+
+  // Handle permission denials
+  useEffect(() => {
+    if (isTracking && permissionStatus === 'denied') {
+      Alert.alert(
+        "Permission Required",
+        "Motion & Fitness permission is required for accurate step tracking. Please enable it in your device settings.",
+        [{ text: "OK" }]
+      );
+    }
+  }, [isTracking, permissionStatus]);
 
   // PPG Algorithm for Web
   useEffect(() => {
@@ -224,7 +246,7 @@ export default function PatientFitnessTrack() {
             <Text style={styles.cardTitle}>Activity Summary</Text>
             {isTracking ? (
               <View style={styles.trackingActiveIndicator}>
-                <View style={styles.activeDot} />
+                <View style={[styles.activeDot, isWalking && { backgroundColor: '#48BB78', transform: [{ scale: stepPulse ? 1.5 : 1 }] }]} />
                 <Text style={styles.activeText}>{isWalking ? 'WALKING...' : 'ACTIVE'}</Text>
               </View>
             ) : (
@@ -233,7 +255,9 @@ export default function PatientFitnessTrack() {
           </View>
           <View style={styles.summaryGrid}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{steps.toLocaleString()}</Text>
+              <Text style={[styles.summaryValue, stepPulse && { color: '#48BB78', transform: [{ scale: 1.1 }] }]}>
+                {steps.toLocaleString()}
+              </Text>
               <Text style={styles.summaryLabel}>Steps</Text>
             </View>
             <View style={styles.summaryItem}>
@@ -245,6 +269,9 @@ export default function PatientFitnessTrack() {
               <Text style={styles.summaryLabel}>Duration</Text>
             </View>
           </View>
+          {isTracking && (
+             <Text style={styles.accuracyHint}>Tip: Keep phone in pocket for best step accuracy</Text>
+          )}
         </View>
 
         {/* Real-time Metrics (Graph) */}
@@ -490,6 +517,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#718096',
     marginTop: 4,
+  },
+  accuracyHint: {
+    fontSize: 10,
+    color: '#718096',
+    fontStyle: 'italic',
+    marginTop: 12,
+    textAlign: 'center',
+    width: '100%',
   },
   sectionTitle: {
     fontSize: 18,
