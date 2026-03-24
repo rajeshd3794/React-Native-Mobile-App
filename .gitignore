@@ -42,3 +42,7 @@ yarn-error.*
 
 # Local Netlify folder
 .netlify
+
+# Secrets
+login.txt
+redeploy_fixed.js

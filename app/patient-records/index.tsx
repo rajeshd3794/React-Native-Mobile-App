@@ -10,30 +10,42 @@ export default function PatientRecordsIndex() {
   const router = useRouter();
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialSync, setInitialSync] = useState(true);
   const [editingRowId, setEditingRowId] = useState<string | number | null>(null);
   const [rowForm, setRowForm] = useState<Partial<Patient>>({});
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
+      // 1. Try Cache
+      const cached = await AsyncStorage.getItem('patients_list_cache');
+      if (cached) {
+        setAllPatients(JSON.parse(cached));
+        setInitialSync(false);
+      }
+
       const all = await getAllPatients();
       all.sort((a, b) => (a.id || 0) - (b.id || 0));
       setAllPatients(all);
+      
+      // 2. Save to Cache
+      await AsyncStorage.setItem('patients_list_cache', JSON.stringify(all));
     } catch (e) {
       console.error('Failed to fetch data', e);
     } finally {
       setLoading(false);
+      setInitialSync(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchData();
+      fetchData(allPatients.length > 0);
     }, [fetchData])
   );
 
   useEffect(() => {
-    const interval = setInterval(fetchData, 15000); 
+    const interval = setInterval(() => fetchData(true), 30000); // 30s background sync
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -51,22 +63,31 @@ export default function PatientRecordsIndex() {
     if (!rowForm.username) return;
     try {
       setLoading(true);
+      // Optimistic Update
+      const updatedList = allPatients.map(p => p.username === rowForm.username ? { ...p, ...rowForm } : p);
+      setAllPatients(updatedList);
+      await AsyncStorage.setItem('patients_list_cache', JSON.stringify(updatedList));
+
       await updatePatient(rowForm as Patient);
       setEditingRowId(null);
-      await fetchData();
+      
+      // Background re-fetch to ensure sync
+      fetchData(true);
       Alert.alert("Success", "Patient record updated successfully.");
     } catch (e) {
       console.error("Failed to update patient", e);
       Alert.alert("Error", "Failed to update record. Please check your connection.");
+      // Revert on error
+      fetchData();
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading && allPatients.length === 0) {
+  if (initialSync && allPatients.length === 0) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text>Synchronizing Cloud Records...</Text>
+        <Text style={{ fontSize: 16, color: '#4A5568', fontWeight: '600' }}>Synchronizing Cloud Records...</Text>
       </View>
     );
   }
@@ -83,7 +104,7 @@ export default function PatientRecordsIndex() {
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.refreshButton} 
-            onPress={fetchData}
+            onPress={() => fetchData()}
             activeOpacity={0.7}
           >
             <Text style={styles.refreshText}>{loading ? '...' : '🔄 Refresh'}</Text>
@@ -117,8 +138,9 @@ export default function PatientRecordsIndex() {
               <Text style={[styles.col, styles.colAppt, { color: '#FFFFFF' }]}>Next Appt</Text>
               <Text style={[styles.col, styles.colAge, { color: '#FFFFFF' }]}>Age</Text>
               <Text style={[styles.col, styles.colCond, { color: '#FFFFFF' }]}>Condition</Text>
-              <Text style={[styles.col, styles.colStat, { color: '#FFFFFF' }]}>Status</Text>
-              <Text style={[styles.col, styles.colAction, { color: '#FFFFFF' }]}>Action</Text>
+               <Text style={[styles.col, styles.colStat, { color: '#FFFFFF' }]}>Status</Text>
+               <Text style={[styles.col, styles.colNotes, { color: '#FFFFFF' }]}>Notes</Text>
+               <Text style={[styles.col, styles.colActionHeader, { color: '#FFFFFF' }]}>Actions</Text>
             </View>
 
             {/* Body */}
@@ -136,7 +158,10 @@ export default function PatientRecordsIndex() {
                         onChangeText={(t) => setRowForm({...rowForm, name: t})} 
                       />
                     ) : (
-                      <TouchableOpacity onPress={() => router.push(`/patient-records/patient-info?patient=${p.username}` as any)}>
+                      <TouchableOpacity onPress={async () => {
+                        await AsyncStorage.setItem('viewing_patient_username', p.username);
+                        router.push('/patient-records/patient-info');
+                      }}>
                         <Text style={{ fontWeight: '700', color: '#2D3748' }}>{p.name}</Text>
                       </TouchableOpacity>
                     )}
@@ -232,20 +257,34 @@ export default function PatientRecordsIndex() {
                       </Text>
                     )}
                   </View>
-
-                  <View style={[styles.col, styles.colAction, { flexDirection: 'row', gap: 8 }]}>
+                  
+                  <View style={styles.colNotes}>
                     {isEditing ? (
-                      <>
-                        <TouchableOpacity onPress={handleSaveRow}>
-                          <Text style={{ color: '#38A169', fontWeight: '800' }}>Save</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={handleCancelEdit}>
-                          <Text style={{ color: '#E53E3E', fontWeight: '700' }}>X</Text>
-                        </TouchableOpacity>
-                      </>
+                      <TextInput 
+                        style={styles.inlineInput} 
+                        value={rowForm.notes || ''} 
+                        onChangeText={(t) => setRowForm({...rowForm, notes: t})} 
+                        maxLength={1000}
+                        placeholder="N/A"
+                      />
                     ) : (
-                      <TouchableOpacity onPress={() => handleStartEdit(p)}>
-                        <Text style={{ color: '#3182CE', fontWeight: '700' }}>Edit</Text>
+                      <Text style={{ fontSize: 13 }} numberOfLines={1}>{p.notes || '-'}</Text>
+                    )}
+                  </View>
+
+                  <View style={[styles.col, styles.colActionCell]}>
+                    {isEditing ? (
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <TouchableOpacity onPress={handleSaveRow} style={styles.saveBtn}>
+                          <Text style={styles.saveBtnText}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleCancelEdit} style={styles.cancelBtn}>
+                          <Text style={styles.cancelBtnText}>Esc</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity onPress={() => handleStartEdit(p)} style={styles.editBtn}>
+                        <Text style={styles.editBtnText}>Edit</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -382,7 +421,9 @@ const styles = StyleSheet.create({
   colAge: { width: 60 },
   colCond: { width: 140 },
   colStat: { width: 90 },
-  colAction: { width: 80 },
+  colNotes: { width: 180 },
+  colActionHeader: { width: 120, textAlign: 'center' },
+  colActionCell: { width: 120, justifyContent: 'center', alignItems: 'center' },
   inlineInput: {
     borderBottomWidth: 1,
     borderBottomColor: '#3182CE',
@@ -390,5 +431,44 @@ const styles = StyleSheet.create({
     color: '#2D3748',
     padding: 2,
     width: '90%',
+  },
+  editBtn: {
+    backgroundColor: '#EBF8FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BEE3F8',
+  },
+  editBtnText: {
+    color: '#3182CE',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  saveBtn: {
+    backgroundColor: '#F0FFF4',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C6F6D5',
+  },
+  saveBtnText: {
+    color: '#38A169',
+    fontWeight: '800',
+    fontSize: 11,
+  },
+  cancelBtn: {
+    backgroundColor: '#FFF5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+  },
+  cancelBtnText: {
+    color: '#E53E3E',
+    fontWeight: '700',
+    fontSize: 11,
   },
 });

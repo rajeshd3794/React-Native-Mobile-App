@@ -19,10 +19,7 @@ export default function DoctorLogin() {
         if (storedUser) {
           const doctor = await getDoctorByUsername(storedUser);
           if (doctor) {
-            router.replace({
-              pathname: '/dashboard',
-              params: { doctorName: `Dr. ${doctor.firstName} ${doctor.lastName}` }
-            });
+            router.replace('/dashboard');
             return;
           }
         }
@@ -51,10 +48,7 @@ export default function DoctorLogin() {
           // Save session
           await AsyncStorage.setItem('logged_in_doctor', username);
           
-          router.replace({
-            pathname: '/dashboard',
-            params: { doctorName: `Dr. ${doctorByUsername.firstName} ${doctorByUsername.lastName}` }
-          });
+          router.replace('/dashboard');
           return;
         } else {
           setError('Incorrect password.');

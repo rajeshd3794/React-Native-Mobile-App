@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { migrateLocalToCloud } from '../db/db';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -23,6 +24,19 @@ export default function AdminPage() {
       localStorage.removeItem('admin_session');
     }
     router.replace('/');
+  };
+
+  const handleSync = async () => {
+    try {
+      Alert.alert("Cloud Sync", "Starting synchronization...");
+      const results = await migrateLocalToCloud();
+      Alert.alert(
+        "Sync Complete", 
+        `Successfully synchronized records:\n\n👨‍⚕️ Doctors: ${results.doctorsMoved}\n🏥 Patients: ${results.patientsMoved}`
+      );
+    } catch (e: any) {
+      Alert.alert("Sync Failed", e.message || "An error occurred during synchronization.");
+    }
   };
 
   return (
@@ -77,6 +91,17 @@ export default function AdminPage() {
               <Text style={styles.iconText}>🏥</Text>
             </View>
             <Text style={styles.actionButtonText}>Patients</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, { borderColor: '#BEE3F8' }]} 
+            onPress={handleSync}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#EBF8FF' }]}>
+              <Text style={styles.iconText}>☁️</Text>
+            </View>
+            <Text style={styles.actionButtonText}>Sync Cloud</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -1,4 +1,4 @@
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -51,19 +51,39 @@ fs.copyFileSync(path.join(DIST_DIR, 'index.html'), path.join(DIST_DIR, '200.html
 const domain = 'meditrack-portal-v3.surge.sh';
 console.log(`🌐 Deploying to ${domain}...`);
 
-const login = fs.readFileSync('login.txt', 'utf8').split('\n');
-const email = login[0].trim();
-const password = login[1].trim();
+const loginFile = path.join(__dirname, 'login.txt');
+let email = 'antigravity.tester2026@yopmail.com';
+let password = 'testerpassword123';
 
-const surge = spawnSync('npx.cmd', ['surge', 'dist', domain], {
-  env: { ...process.env, SURGE_LOGIN: email, SURGE_TOKEN: password },
-  stdio: 'inherit',
-  shell: true
+if (fs.existsSync(loginFile)) {
+  const loginData = fs.readFileSync(loginFile, 'utf8').split('\n');
+  if (loginData.length >= 2) {
+    email = loginData[0].trim();
+    password = loginData[1].trim();
+  }
+}
+
+const surge = spawn('npx.cmd', ['surge', 'dist', domain], { shell: true });
+
+surge.stdout.on('data', (data) => {
+  const out = data.toString();
+  process.stdout.write(out);
+  if (out.includes('email:')) surge.stdin.write(`${email}\n`);
+  if (out.includes('password:')) surge.stdin.write(`${password}\n`);
 });
 
-if (surge.status === 0) {
-  console.log('✅ Successfully published stable MediCore implementation!');
-} else {
-  console.error('❌ Surge deployment failed');
-  process.exit(1);
-}
+surge.stderr.on('data', (data) => {
+  const out = data.toString();
+  process.stderr.write(out);
+  if (out.includes('email:')) surge.stdin.write(`${email}\n`);
+  if (out.includes('password:')) surge.stdin.write(`${password}\n`);
+});
+
+surge.on('close', (code) => {
+  if (code === 0) {
+    console.log('✅ Successfully published stable MediCore implementation!');
+  } else {
+    console.error('❌ Surge deployment failed');
+  }
+  process.exit(code);
+});

@@ -12,12 +12,13 @@ export default function PatientSingleRecord() {
   const [patient, setPatient] = useState<any>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [initialSync, setInitialSync] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       // 1. Check query param (for doctor access)
-      let username = params.patient as string;
+      let username = await AsyncStorage.getItem('viewing_patient_username') || '';
       
       // 2. Fallback to AsyncStorage (for patient session)
       if (!username) {
@@ -29,12 +30,22 @@ export default function PatientSingleRecord() {
         return;
       }
 
+      // 3. Try to load from Cache first
+      const cacheKey = `patient_cache_${username}`;
+      const cached = await AsyncStorage.getItem(cacheKey);
+      if (cached) {
+        setPatient(JSON.parse(cached));
+        setInitialSync(false); // We have data, don't show the big spinner
+      }
+
       const found = await getPatientByUsername(username);
       if (found && typeof found === 'object') {
         setPatient(found);
-      } else {
-        // Fallback for demo/test purposes
-        setPatient({
+        // Save to cache
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(found));
+      } else if (!cached) {
+        // Fallback only if no cache exists
+        const fallback = {
           name: username || 'Patient',
           username: username || 'patient',
           age: 30,
@@ -45,18 +56,20 @@ export default function PatientSingleRecord() {
           height: '5\'9"',
           lastVisit: 'Recent',
           notes: 'No critical medical history. Regular exercise and balanced diet recommended.'
-        });
+        };
+        setPatient(fallback);
       }
     } catch (e) {
       console.error('Failed to fetch patient data', e);
     } finally {
       setLoading(false);
+      setInitialSync(false);
     }
   }, [params.patient]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchData();
+      fetchData(patient !== null); // Silent fetch if we already have data
     }, [fetchData])
   );
 
@@ -71,7 +84,10 @@ export default function PatientSingleRecord() {
     
     try {
       await updatePatientAppointment(patient.username, appointmentStr);
-      setPatient({ ...patient, nextAppointment: appointmentStr });
+      const updatedPatient = { ...patient, nextAppointment: appointmentStr };
+      setPatient(updatedPatient);
+      // Update cache
+      await AsyncStorage.setItem(`patient_cache_${patient.username}`, JSON.stringify(updatedPatient));
     } catch (e) {
       console.error('Failed to request appointment', e);
     }
@@ -83,16 +99,26 @@ export default function PatientSingleRecord() {
   };
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
+  
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.multiRemove(['logged_in_patient', 'viewing_patient_username']);
+      router.replace('/patient-auth');
+    } catch (e) {
+      console.error('Logout failed', e);
+      router.replace('/patient-auth');
+    }
+  };
 
   const navigateTo = (path: string) => {
     setIsMenuOpen(false);
     router.push(path as any);
   };
 
-  if (loading && !patient) {
+  if (initialSync && !patient) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text>Synchronizing Record...</Text>
+        <Text style={{ fontSize: 16, color: '#4A5568', fontWeight: '600' }}>Synchronizing Record...</Text>
       </View>
     );
   }
@@ -122,7 +148,7 @@ export default function PatientSingleRecord() {
           )}
           <TouchableOpacity 
             style={styles.logoutButton} 
-            onPress={() => router.replace('/patient-auth')}
+            onPress={handleLogout}
           >
             <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>

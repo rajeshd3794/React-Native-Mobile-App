@@ -59,8 +59,11 @@ async function getDb() {
             age INTEGER,
             condition TEXT,
             status TEXT,
-            timestamp INTEGER
+            timestamp INTEGER,
+            notes TEXT
           );
+          
+          -- Migration: Add notes column if it doesn't exist (using a safe PRAGMA check is complex, so we use a simple try-catch block later)
           CREATE TABLE IF NOT EXISTS PatientHistory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             patientUsername TEXT NOT NULL,
@@ -92,6 +95,14 @@ async function getDb() {
             );
           }
         } catch (e) {}
+        
+        // Ensure 'notes' column exists in local database
+        try {
+          await db.execAsync('ALTER TABLE Patients ADD COLUMN notes TEXT;');
+          console.log('Migrated: Added notes column to Patients table');
+        } catch (e) {
+          // If column already exists or table is new, this may fail, which is fine
+        }
 
         console.log('Database and Tables initialized');
         return db;
@@ -132,6 +143,7 @@ export interface Patient {
   condition?: string;
   status?: string;
   timestamp?: number;
+  notes?: string;
 }
 
 export interface PatientHistoryItem {
@@ -178,7 +190,8 @@ const mapPatientToCloud = (pat: Patient) => ({
   age: pat.age || 30,
   condition: pat.condition || 'General Checkup',
   status: pat.status || 'New',
-  timestamp: pat.timestamp || Date.now()
+  timestamp: pat.timestamp || Date.now(),
+  notes: pat.notes || null
 });
 
 const mapCloudToPatient = (row: any): Patient => ({
@@ -192,7 +205,8 @@ const mapCloudToPatient = (row: any): Patient => ({
   age: row.age,
   condition: row.condition,
   status: row.status,
-  timestamp: row.timestamp
+  timestamp: row.timestamp,
+  notes: row.notes
 });
 
 const mapHistoryToCloud = (h: PatientHistoryItem) => ({
@@ -414,7 +428,7 @@ export async function addPatient(patient: Patient) {
     const db = await getDb();
     if (db) {
           await db.runAsync(
-            'INSERT INTO Patients (name, username, email, dob, password, nextAppointment, age, condition, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO Patients (name, username, email, dob, password, nextAppointment, age, condition, status, timestamp, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
               patient.name,
               patient.username,
@@ -425,7 +439,8 @@ export async function addPatient(patient: Patient) {
               patient.age || 30,
               patient.condition || 'General Checkup',
               patient.status || 'New',
-              patient.timestamp || Date.now()
+              patient.timestamp || Date.now(),
+              patient.notes || null
             ]
           );
     }
@@ -547,7 +562,7 @@ export async function updatePatient(patient: Patient): Promise<void> {
     const db = await getDb();
     if (db) {
       await db.runAsync(
-        'UPDATE Patients SET name = ?, email = ?, dob = ?, password = ?, nextAppointment = ?, age = ?, condition = ?, status = ? WHERE username = ?',
+        'UPDATE Patients SET name = ?, email = ?, dob = ?, password = ?, nextAppointment = ?, age = ?, condition = ?, status = ?, notes = ? WHERE username = ?',
         [
           patient.name,
           patient.email,
@@ -557,6 +572,7 @@ export async function updatePatient(patient: Patient): Promise<void> {
           patient.age ?? null,
           patient.condition ?? null,
           patient.status ?? null,
+          patient.notes || null,
           patient.username
         ]
       );
@@ -653,6 +669,33 @@ export async function verifyAdmin(username: string, password: string): Promise<b
   const realPassword = decryptPassword(data.password);
   if (realPassword !== password) {
     console.warn('Password mismatch for admin:', username);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Verifies Patient credentials against the Supabase 'patients' table.
+ * NO local fallback for authentication.
+ */
+export async function verifyPatient(username: string, password: string): Promise<boolean> {
+  // Check the Patients table in Supabase for matching credentials
+  const { data, error } = await supabase
+    .from('patients')
+    .select('username, password')
+    .eq('username', username.trim())
+    .single();
+
+  if (error || !data) {
+    console.warn('Patient cloud verification failed:', error?.message);
+    return false;
+  }
+
+  // Decrypt and check
+  const realPassword = decryptPassword(data.password);
+  if (realPassword !== password) {
+    console.warn('Password mismatch for patient:', username);
     return false;
   }
 

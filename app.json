@@ -19,7 +19,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.medicore.app",
       "infoPlist": {
-        "NSMotionUsageDescription": "This app uses the motion sensor to track your steps for health monitoring."
+        "NSMotionUsageDescription": "This app uses the motion sensor to track your steps for health monitoring.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

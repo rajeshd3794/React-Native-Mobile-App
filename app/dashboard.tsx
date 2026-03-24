@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date().getDate());
   const [currentWeek, setCurrentWeek] = useState<any[]>([]);
   
-  const [doctorDisplay, setDoctorDisplay] = useState(params.doctorName as string || 'Doctor');
+  const [doctorDisplay, setDoctorDisplay] = useState('Doctor');
   const [loading, setLoading] = useState(true);
 
   // Session verification & Name fetching
@@ -326,10 +326,10 @@ export default function Dashboard() {
             <TouchableOpacity 
               key={patient.id || `patient-${idx}`} 
               style={styles.patientCard}
-              onPress={() => router.push({
-                pathname: `/patient/${patient.name}`,
-                params: { status: patient.status }
-              } as any)}
+              onPress={async () => {
+                await AsyncStorage.setItem('viewing_patient_username', patient.username || patient.name);
+                router.push('/patient/view');
+              }}
             >
               <View style={styles.patientAvatarContainer}>
                 <Text style={styles.patientInitials}>

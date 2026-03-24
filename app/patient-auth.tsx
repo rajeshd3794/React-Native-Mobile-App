@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingVi
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getPatientByUsername } from '../db/db';
+import { verifyPatient } from '../db/db';
 
 export default function PatientAuth() {
   const router = useRouter();
@@ -19,35 +19,20 @@ export default function PatientAuth() {
     }
 
     try {
-      const patient = await getPatientByUsername(username);
+      const isValid = await verifyPatient(username, password);
       
-      if (patient) {
-        // Check password
-        if (patient.password === password) {
-          setError('');
-          await AsyncStorage.setItem('logged_in_patient', patient.username);
-          router.replace(`/patient-records/patient-info`);
-          return;
-        } else {
-          setError('Incorrect password.');
-          return;
-        }
+      if (isValid) {
+        setError('');
+        await AsyncStorage.removeItem('viewing_patient_username'); // Clear any stale doctor viewing context
+        await AsyncStorage.setItem('logged_in_patient', username);
+        router.replace(`/patient-records/patient-info`);
+      } else {
+        setError('Invalid username or password.');
       }
     } catch (e) {
-      console.error('Failed to read from database', e);
-      setError('Database error. Please try again.');
-      return;
+      console.error('Failed to authenticate with cloud', e);
+      setError('Connection error. Please try again.');
     }
-
-    // Mock Authentication Logic fallback (matching seeded data)
-    if (username === 'patient' && password === 'password123') {
-      setError('');
-      await AsyncStorage.setItem('logged_in_patient', 'patient');
-      router.replace(`/patient-records/patient-info`);
-      return;
-    }
-
-    setError('Username not found.');
   };
 
   return (
