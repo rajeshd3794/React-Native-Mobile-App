@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://meditrack-portal.surge.sh/sitemap.xml

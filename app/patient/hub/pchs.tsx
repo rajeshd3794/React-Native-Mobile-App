@@ -4,9 +4,11 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPatientByUsername, Patient } from '../../../db/db';
+import { useActivity } from '../../../context/ActivityContext';
 
 export default function PatientCurrentHealthStatus() {
   const router = useRouter();
+  const { steps, calories, duration } = useActivity();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,6 +27,40 @@ export default function PatientCurrentHealthStatus() {
     fetchPatientData();
   }, []);
 
+  // Calculate Daily Activity Score (0-100)
+  // Weights: Steps (40%), Calories (40%), Duration (20%)
+  // Goals: 10,000 steps, 500 kcal, 60 mins duration
+  const calculateScore = () => {
+    const stepScore = Math.min(40, (steps / 10000) * 40);
+    const calorieScore = Math.min(40, (calories / 500) * 40);
+    const durationScore = Math.min(20, (duration / 3600) * 20);
+    return Math.floor(stepScore + calorieScore + durationScore);
+  };
+
+  const activityScore = calculateScore();
+  
+  const getScoreLabel = (score: number) => {
+    if (score >= 90) return 'Elite';
+    if (score >= 70) return 'Optimal';
+    if (score >= 40) return 'Good';
+    return 'Low';
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 90) return '#805AD5'; // Purple
+    if (score >= 70) return '#48BB78'; // Green
+    if (score >= 40) return '#4299E1'; // Blue
+    return '#ED8936'; // Orange
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return `${hrs}h ${remMins}m`;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -40,24 +76,24 @@ export default function PatientCurrentHealthStatus() {
         {/* Dashboard Overview */}
         <View style={styles.dashboardCard}>
           <Text style={styles.dashboardTitle}>Daily Activity Score</Text>
-          <View style={styles.scoreContainer}>
-            <Text style={styles.scoreValue}>88</Text>
-            <Text style={styles.scoreLabel}>Optimal</Text>
+          <View style={[styles.scoreContainer, { borderColor: getScoreColor(activityScore) }]}>
+            <Text style={styles.scoreValue}>{activityScore}</Text>
+            <Text style={[styles.scoreLabel, { color: getScoreColor(activityScore) }]}>{getScoreLabel(activityScore)}</Text>
           </View>
           <View style={styles.metricsGrid}>
             <View style={styles.metricItem}>
               <Text style={styles.metricEmoji}>👣</Text>
-              <Text style={styles.metricValue}>8,432</Text>
+              <Text style={styles.metricValue}>{steps.toLocaleString()}</Text>
               <Text style={styles.metricLabel}>Steps</Text>
             </View>
             <View style={styles.metricItem}>
               <Text style={styles.metricEmoji}>🔥</Text>
-              <Text style={styles.metricValue}>450</Text>
+              <Text style={styles.metricValue}>{calories}</Text>
               <Text style={styles.metricLabel}>Kcal</Text>
             </View>
             <View style={styles.metricItem}>
               <Text style={styles.metricEmoji}>⏱️</Text>
-              <Text style={styles.metricValue}>45m</Text>
+              <Text style={styles.metricValue}>{formatDuration(duration)}</Text>
               <Text style={styles.metricLabel}>Duration</Text>
             </View>
           </View>

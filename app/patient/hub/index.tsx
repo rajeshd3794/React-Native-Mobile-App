@@ -4,14 +4,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPatientByUsername, Patient } from '../../../db/db';
-import { useActivityTracker } from '../../../hooks/useActivityTracker';
+import { useActivity } from '../../../context/ActivityContext';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { saveHeartRate, initHealthServices } from '../../../services/healthService';
 
 export default function PatientHub() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { steps, calories } = useActivityTracker();
+  const { steps, calories } = useActivity();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);

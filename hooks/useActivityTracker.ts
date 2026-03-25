@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -7,8 +7,8 @@ const STORAGE_STEPS = 'activity_steps';
 const STORAGE_CALORIES = 'activity_calories';
 const STORAGE_DURATION = 'activity_duration';
 const STORAGE_IS_TRACKING = 'activity_is_tracking';
-
 const STORAGE_START_TIME = 'activity_start_time';
+const STORAGE_LAST_SYNC_TIME = 'activity_last_sync_time';
 
 export const useActivityTracker = () => {
   const [steps, setSteps] = useState(0);
@@ -22,6 +22,8 @@ export const useActivityTracker = () => {
   
   // Track steps taken BEFORE the current start command
   const [baseSteps, setBaseSteps] = useState(0);
+  const appState = useRef(AppState.currentState);
+  const lastSyncTimeRef = useRef<number>(Date.now());
 
   // Load initial data
   useEffect(() => {
@@ -37,6 +39,7 @@ export const useActivityTracker = () => {
         const savedDuration = await AsyncStorage.getItem(STORAGE_DURATION);
         const savedTracking = await AsyncStorage.getItem(STORAGE_IS_TRACKING);
         const savedStartTime = await AsyncStorage.getItem(STORAGE_START_TIME);
+        const savedLastSync = await AsyncStorage.getItem(STORAGE_LAST_SYNC_TIME);
         
         if (savedSteps) {
           const s = parseInt(savedSteps, 10);
@@ -47,10 +50,15 @@ export const useActivityTracker = () => {
         if (savedDuration) {
           setDuration(parseInt(savedDuration, 10));
         }
+        if (savedLastSync) {
+           lastSyncTimeRef.current = parseInt(savedLastSync, 10);
+        }
         if (savedTracking === 'true') {
           setIsTracking(true);
           if (savedStartTime) {
             setStartTime(parseInt(savedStartTime, 10));
+            // Run a catch-up sync on first mount if tracking was active
+            catchUpSteps(parseInt(savedLastSync || savedStartTime, 10));
           }
         }
       } catch (e) {
@@ -60,7 +68,47 @@ export const useActivityTracker = () => {
     loadStats();
   }, []);
 
-  // Set up Pedometer
+  // Background/Lock Sync Logic
+  const catchUpSteps = async (fromTime: number) => {
+    if (Platform.OS === 'web') return;
+    const isAvailable = await Pedometer.isAvailableAsync();
+    if (!isAvailable) return;
+
+    const now = new Date();
+    const start = new Date(fromTime);
+    
+    try {
+      const result = await Pedometer.getStepCountAsync(start, now);
+      if (result.steps > 0) {
+        setSteps(prev => {
+          const total = prev + result.steps;
+          setCalories(Math.round(total * 0.04));
+          AsyncStorage.setItem(STORAGE_STEPS, total.toString());
+          return total;
+        });
+      }
+      lastSyncTimeRef.current = Date.now();
+      AsyncStorage.setItem(STORAGE_LAST_SYNC_TIME, lastSyncTimeRef.current.toString());
+    } catch (e) {
+      console.log("Catch up failed (likely time range too small)", e);
+    }
+  };
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active' && isTracking) {
+        console.log('App has come to the foreground! Syncing steps...');
+        catchUpSteps(lastSyncTimeRef.current);
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isTracking]);
+
+  // Set up Pedometer Watcher (Foreground)
   useEffect(() => {
     let subscription: any;
 
@@ -82,8 +130,10 @@ export const useActivityTracker = () => {
         setIsWalking(true);
         
         // Persist
+        lastSyncTimeRef.current = Date.now();
         AsyncStorage.setItem(STORAGE_STEPS, newTotalSteps.toString());
         AsyncStorage.setItem(STORAGE_CALORIES, newCals.toString());
+        AsyncStorage.setItem(STORAGE_LAST_SYNC_TIME, lastSyncTimeRef.current.toString());
       });
     };
 
@@ -93,7 +143,7 @@ export const useActivityTracker = () => {
     };
   }, [isTracking, baseSteps]);
 
-  // Duration Timer logic (Resilient to background/lock)
+  // Duration & Simulation logic (Resilient to background/lock)
   useEffect(() => {
     let interval: any;
     if (isTracking && startTime) {
@@ -102,10 +152,23 @@ export const useActivityTracker = () => {
         const newDuration = Math.floor((now - startTime) / 1000);
         setDuration(newDuration);
         AsyncStorage.setItem(STORAGE_DURATION, newDuration.toString());
+
+        // Web/Simulator fallback for steps
+        if (Platform.OS === 'web' || isPedometerAvailable === 'false') {
+          setSteps(prev => {
+            const nextSteps = prev + Math.floor(Math.random() * 3); // Sim 0-2 steps
+            setCalories(Math.round(nextSteps * 0.04));
+            AsyncStorage.setItem(STORAGE_STEPS, nextSteps.toString());
+            return nextSteps;
+          });
+          setIsWalking(true);
+        }
       }, 1000);
 
       const timeout = setTimeout(() => {
-        setIsWalking(false);
+        if (Platform.OS !== 'web' && isPedometerAvailable !== 'false') {
+          setIsWalking(false);
+        }
       }, 3000);
 
       return () => {
@@ -113,7 +176,7 @@ export const useActivityTracker = () => {
         clearTimeout(timeout);
       };
     }
-  }, [isTracking, startTime, isWalking]);
+  }, [isTracking, startTime, isPedometerAvailable]);
 
   const toggleTracking = useCallback(async () => {
     const nextState = !isTracking;
@@ -161,7 +224,8 @@ export const useActivityTracker = () => {
         STORAGE_CALORIES, 
         STORAGE_DURATION, 
         STORAGE_IS_TRACKING,
-        STORAGE_START_TIME
+        STORAGE_START_TIME,
+        STORAGE_LAST_SYNC_TIME
       ]);
     } catch (e) {
       console.error("Failed to clear activity storage", e);

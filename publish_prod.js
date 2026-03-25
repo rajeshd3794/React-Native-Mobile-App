@@ -46,6 +46,16 @@ if (fs.existsSync(NODE_MODULES_PATH)) {
 console.log('📄 Creating 200.html for SPA routing...');
 fs.copyFileSync(path.join(DIST_DIR, 'index.html'), path.join(DIST_DIR, '200.html'));
 
+// 4.5 Copy SEO Assets from public/ to dist/
+const PUBLIC_DIR = path.join(__dirname, 'public');
+if (fs.existsSync(PUBLIC_DIR)) {
+  console.log('🔍 Copying SEO assets from public/ to dist/...');
+  const seoFiles = fs.readdirSync(PUBLIC_DIR);
+  seoFiles.forEach(file => {
+    fs.copyFileSync(path.join(PUBLIC_DIR, file), path.join(DIST_DIR, file));
+  });
+}
+
 // 5. Deploy to Surge
 const domain = 'meditrack-portal.surge.sh';
 console.log(`🌐 Publishing to ${domain}...`);

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Pla
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useActivityTracker } from '../../../hooks/useActivityTracker';
+import { useActivity } from '../../../context/ActivityContext';
 import HeartRateMonitor from '../../../components/HeartRateMonitor';
 
 const { width } = Dimensions.get('window');
@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus } = useActivityTracker();
+  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus } = useActivity();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
