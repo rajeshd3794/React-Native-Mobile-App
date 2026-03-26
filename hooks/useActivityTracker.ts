@@ -33,6 +33,7 @@ export const useActivityTracker = () => {
   const appState = useRef(AppState.currentState);
   const lastSyncTimeRef = useRef<number>(Date.now());
   const lastStepTimeRef = useRef<number>(0);
+  const previousSessionStepsRef = useRef<number>(0);
 
   const isInPocketRef = useRef(false);
   const isWalkingRef = useRef(false);
@@ -187,26 +188,33 @@ export const useActivityTracker = () => {
       if (!isAvailable || isCancelled) return;
 
       // watchStepCount returns steps SINCE the listener started
+      previousSessionStepsRef.current = 0;
       subscription = Pedometer.watchStepCount(result => {
+        const delta = result.steps - previousSessionStepsRef.current;
+        previousSessionStepsRef.current = result.steps;
+
         // Gated Logic: Only count steps if in pocket
         if (!isInPocketRef.current) {
           setIsWalking(false);
           return;
         }
-        // total = steps_before_start + steps_in_this_session
-        const newTotalSteps = baseSteps + result.steps;
-        const newCals = Math.round(newTotalSteps * 0.04);
         
-        setSteps(newTotalSteps);
-        setCalories(newCals);
-        setIsWalking(true);
-        lastStepTimeRef.current = Date.now();
-        
-        // Persist
-        lastSyncTimeRef.current = Date.now();
-        AsyncStorage.setItem(STORAGE_STEPS, newTotalSteps.toString());
-        AsyncStorage.setItem(STORAGE_CALORIES, newCals.toString());
-        AsyncStorage.setItem(STORAGE_LAST_SYNC_TIME, lastSyncTimeRef.current.toString());
+        setSteps(prevSteps => {
+          const newTotalSteps = prevSteps + delta;
+          const newCals = Math.round(newTotalSteps * 0.04);
+          
+          setCalories(newCals);
+          setIsWalking(true);
+          lastStepTimeRef.current = Date.now();
+          
+          // Persist
+          lastSyncTimeRef.current = Date.now();
+          AsyncStorage.setItem(STORAGE_STEPS, newTotalSteps.toString());
+          AsyncStorage.setItem(STORAGE_CALORIES, newCals.toString());
+          AsyncStorage.setItem(STORAGE_LAST_SYNC_TIME, lastSyncTimeRef.current.toString());
+          
+          return newTotalSteps;
+        });
       });
     };
 
@@ -215,7 +223,7 @@ export const useActivityTracker = () => {
       isCancelled = true;
       if (subscription) subscription.remove();
     };
-  }, [isTracking, baseSteps]);
+  }, [isTracking]);
 
   // Duration & Simulation logic (Resilient to background/lock)
   useEffect(() => {
