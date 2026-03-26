@@ -29,6 +29,7 @@ export const useActivityTracker = () => {
   const [baseSteps, setBaseSteps] = useState(0);
   const appState = useRef(AppState.currentState);
   const lastSyncTimeRef = useRef<number>(Date.now());
+  const lastStepTimeRef = useRef<number>(0);
 
   // Load initial data
   useEffect(() => {
@@ -179,6 +180,7 @@ export const useActivityTracker = () => {
         setSteps(newTotalSteps);
         setCalories(newCals);
         setIsWalking(true);
+        lastStepTimeRef.current = Date.now();
         
         // Persist
         lastSyncTimeRef.current = Date.now();
@@ -206,6 +208,11 @@ export const useActivityTracker = () => {
         if (isInPocket && (isWalking || isMoving)) {
            setDuration(newDuration);
            AsyncStorage.setItem(STORAGE_DURATION, newDuration.toString());
+        }
+
+        // Watchdog: If no steps in 2.5 seconds, set isWalking to false
+        if (isWalking && Date.now() - lastStepTimeRef.current > 2500) {
+          setIsWalking(false);
         }
 
         // Web/Simulator fallback for steps
