@@ -341,6 +341,17 @@ export const useActivityTracker = () => {
     }
   }, []);
 
+  // FOR WEB/SIMULATION: Manually trigger a "Walk" for testing
+  const simulateWalk = useCallback((count = 10) => {
+    setSteps(prev => {
+      const next = prev + count;
+      setCalories(Math.round(next * 0.04));
+      setIsWalking(true);
+      AsyncStorage.setItem(STORAGE_STEPS, next.toString());
+      return next;
+    });
+  }, []);
+
   return { 
     steps, 
     calories, 
@@ -349,6 +360,7 @@ export const useActivityTracker = () => {
     isTracking, 
     toggleTracking, 
     resetActivity, 
+    simulateWalk,
     isPedometerAvailable,
     permissionStatus,
     isInPocket,

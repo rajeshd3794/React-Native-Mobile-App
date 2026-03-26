@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, lux, forcePocket, isLightSensorAvailable, isMoving, motionMagnitude, debugMode, setDebugMode } = useActivity();
+  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, lux, forcePocket, isLightSensorAvailable, isMoving, motionMagnitude, debugMode, setDebugMode, simulateWalk } = useActivity();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -349,6 +349,13 @@ export default function PatientFitnessTrack() {
           {isTracking && (
              <Text style={styles.accuracyHint}>Tip: Keep phone in pocket for best step accuracy</Text>
           )}
+
+          <TouchableOpacity 
+            style={styles.testStepButton} 
+            onPress={() => simulateWalk(50)}
+          >
+            <Text style={styles.testStepText}>🏃 Simulate Walking (+50 steps)</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Real-time Metrics (Graph) */}
@@ -683,6 +690,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#718096',
     marginTop: 4,
+  },
+  testStepButton: {
+    marginTop: 16,
+    backgroundColor: '#EDF2F7',
+    padding: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  testStepText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3182CE',
   },
   accuracyHint: {
     fontSize: 10,
