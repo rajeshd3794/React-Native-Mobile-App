@@ -193,7 +193,6 @@ export const useActivityTracker = () => {
           setIsWalking(false);
           return;
         }
-
         // total = steps_before_start + steps_in_this_session
         const newTotalSteps = baseSteps + result.steps;
         const newCals = Math.round(newTotalSteps * 0.04);

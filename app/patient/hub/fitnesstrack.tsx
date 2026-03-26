@@ -38,7 +38,6 @@ export default function PatientFitnessTrack() {
   useEffect(() => { isMeasuringRef.current = isMeasuring; }, [isMeasuring]);
   useEffect(() => { isFingerPlacedRef.current = isFingerPlaced; }, [isFingerPlaced]);
   useEffect(() => { measurementProgressRef.current = measurementProgress; }, [measurementProgress]);
-
   // Pulse effect when steps increase
   useEffect(() => {
     if (steps > 0) {
@@ -50,7 +49,6 @@ export default function PatientFitnessTrack() {
 
   // Session Cleanup: None (New requirement: Persist on Stop, only reset on Reset button)
   // Removed automatic resetActivity call on unmount to enable session recovery.
-
   // Handle permission denials
   useEffect(() => {
     if (isTracking && permissionStatus === 'denied') {
