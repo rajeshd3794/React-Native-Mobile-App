@@ -92,7 +92,10 @@ export const useActivityTracker = () => {
     return () => subscription?.remove();
   }, []);
 
-  const isInPocket = forcePocket || (isLightSensorAvailable ? (lux < 25) : isVertical);
+  // Pocket Logic: 
+  // 1. Android/LightSensor: < 60 lux (Relaxed for thin pockets)
+  // 2. iOS/No-Sensor: Vertical Tilt > 0.4 (Relaxed for baggy pockets)
+  const isInPocket = forcePocket || (isLightSensorAvailable ? (lux < 60) : isVertical);
 
   // Accelerometer Logic (Motion Sensitivity)
   useEffect(() => {
@@ -104,13 +107,12 @@ export const useActivityTracker = () => {
         const magnitude = Math.sqrt(data.x ** 2 + data.y ** 2 + data.z ** 2);
         setMotionMagnitude(magnitude);
         
-        // Orientation detection: Pocketed phones are usually vertical/tilt (high gravity on Y-axis)
-        // If gravity on Y is > 0.7 or < -0.7, phone is roughly standing
+        // Orientation detection: Relaxed to 0.4 for broader pocket compatibility
         const tilt = Math.abs(data.y);
-        setIsVertical(tilt > 0.6);
+        setIsVertical(tilt > 0.4);
 
         // Movement detection: 1.15+ indicates meaningful movement
-        if (!isJittering && (magnitude > 1.2 || magnitude < 0.8)) {
+        if (!isJittering && (magnitude > 1.15 || magnitude < 0.85)) {
           setIsMoving(true);
         } else {
           setIsMoving(false);
@@ -212,7 +214,7 @@ export const useActivityTracker = () => {
         const now = Date.now();
         const newDuration = Math.floor((now - startTime) / 1000);
         
-        // ONLY increment duration if in pocket and moving (either steps or shaking)
+        // Gated Logic: Increment duration if user is moving (even if steps haven't fired yet)
         if (isInPocket && (isWalking || isMoving)) {
            setDuration(newDuration);
            AsyncStorage.setItem(STORAGE_DURATION, newDuration.toString());
