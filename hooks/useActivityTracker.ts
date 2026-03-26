@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
-import { Pedometer, LightSensor } from 'expo-sensors';
+import { Pedometer, LightSensor, Accelerometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_STEPS = 'activity_steps';
@@ -19,7 +19,10 @@ export const useActivityTracker = () => {
   const [permissionStatus, setPermissionStatus] = useState<string>('undetermined');
   const [isWalking, setIsWalking] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
-  const [lux, setLux] = useState(100); // Default bright
+  const [lux, setLux] = useState(100); 
+  const [isLightSensorAvailable, setIsLightSensorAvailable] = useState<boolean | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
+  const [motionMagnitude, setMotionMagnitude] = useState(1.0);
   const [forcePocket, setForcePocket] = useState(false); // For web simulation
   
   // Track steps taken BEFORE the current start command
@@ -75,6 +78,7 @@ export const useActivityTracker = () => {
     let subscription: any;
     const subscribe = async () => {
       const isAvailable = await LightSensor.isAvailableAsync();
+      setIsLightSensorAvailable(isAvailable);
       if (!isAvailable) return;
       subscription = LightSensor.addListener(data => {
         setLux(data.illuminance);
@@ -85,7 +89,29 @@ export const useActivityTracker = () => {
     return () => subscription?.remove();
   }, []);
 
-  const isInPocket = lux < 10 || forcePocket;
+  const isInPocket = forcePocket || (isLightSensorAvailable === false) || (lux < 25);
+
+  // Accelerometer Logic (Motion Sensitivity)
+  useEffect(() => {
+    let subscription: any;
+    const subscribe = async () => {
+      const isAvailable = await Accelerometer.isAvailableAsync();
+      if (!isAvailable) return;
+      subscription = Accelerometer.addListener(data => {
+        const magnitude = Math.sqrt(data.x ** 2 + data.y ** 2 + data.z ** 2);
+        setMotionMagnitude(magnitude);
+        // Magnitude is ~1.0 when stationary. 1.15+ indicates meaningful movement
+        if (magnitude > 1.15 || magnitude < 0.85) {
+          setIsMoving(true);
+        } else {
+          setIsMoving(false);
+        }
+      });
+      Accelerometer.setUpdateInterval(500);
+    };
+    subscribe();
+    return () => subscription?.remove();
+  }, []);
 
   // Background/Lock Sync Logic
   const catchUpSteps = async (fromTime: number) => {
@@ -176,8 +202,8 @@ export const useActivityTracker = () => {
         const now = Date.now();
         const newDuration = Math.floor((now - startTime) / 1000);
         
-        // ONLY increment duration if in pocket and walking
-        if (isInPocket && isWalking) {
+        // ONLY increment duration if in pocket and moving (either steps or shaking)
+        if (isInPocket && (isWalking || isMoving)) {
            setDuration(newDuration);
            AsyncStorage.setItem(STORAGE_DURATION, newDuration.toString());
         }
@@ -199,18 +225,11 @@ export const useActivityTracker = () => {
         }
       }, 1000);
 
-      const timeout = setTimeout(() => {
-        if (Platform.OS !== 'web' && isPedometerAvailable !== 'false') {
-          setIsWalking(false);
-        }
-      }, 3000);
-
       return () => {
         clearInterval(interval);
-        clearTimeout(timeout);
       };
     }
-  }, [isTracking, startTime, isPedometerAvailable]);
+  }, [isTracking, startTime, isPedometerAvailable, isInPocket, isWalking, isMoving]);
 
   const toggleTracking = useCallback(async () => {
     const nextState = !isTracking;
@@ -278,6 +297,9 @@ export const useActivityTracker = () => {
     permissionStatus,
     isInPocket,
     lux,
+    isLightSensorAvailable,
+    isMoving,
+    motionMagnitude,
     forcePocket: () => setForcePocket(prev => !prev)
   };
 };

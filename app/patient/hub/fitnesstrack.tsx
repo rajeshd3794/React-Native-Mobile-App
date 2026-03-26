@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, lux, forcePocket } = useActivity();
+  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, lux, forcePocket, isLightSensorAvailable, isMoving, motionMagnitude } = useActivity();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -301,9 +301,11 @@ export default function PatientFitnessTrack() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Status Indicator */}
         {isTracking && (
-          <View style={[styles.statusBanner, { backgroundColor: isInPocket ? (isWalking ? '#48BB78' : '#ECC94B') : '#ED8936' }]}>
+          <View style={[styles.statusBanner, { backgroundColor: isInPocket ? ((isWalking || isMoving) ? '#48BB78' : '#ECC94B') : '#ED8936' }]}>
             <Text style={styles.statusText}>
-              {!isInPocket ? '☝️ Place in pocket to track' : (!isWalking ? '👣 Start walking to track' : '✅ Actively Tracking')}
+              {!isInPocket 
+                ? (isLightSensorAvailable === false ? '🛡️ Manual Mode: Keep moving!' : '☝️ Place in pocket to track') 
+                : (!(isWalking || isMoving) ? '👣 Start walking to track' : '✅ Tracking Live Stats...')}
             </Text>
           </View>
         )}
@@ -511,13 +513,37 @@ export default function PatientFitnessTrack() {
            </TouchableOpacity>
         </View>
 
-        {/* Simulation Controls for Web */}
-        {Platform.OS === 'web' && isTracking && (
-          <TouchableOpacity style={styles.simButton} onPress={forcePocket}>
-            <Text style={styles.simButtonText}>
-              {isInPocket ? '🔓 Exit Pocket (Sim)' : '🛡️ Enter Pocket (Sim)'}
-            </Text>
-          </TouchableOpacity>
+        {/* Simulation & Debug Controls */}
+        {isTracking && (
+          <View style={styles.debugCard}>
+            <Text style={styles.debugTitle}>Sensor Diagnostic</Text>
+            <View style={styles.debugGrid}>
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Pocket Sensor</Text>
+                <Text style={[styles.debugValue, isInPocket ? {color: '#48BB78'} : {color: '#F56565'}]}>
+                  {isInPocket ? 'ACTIVE' : 'IDLE'}
+                </Text>
+              </View>
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Motion Detect</Text>
+                <Text style={[styles.debugValue, (isMoving || isWalking) ? {color: '#48BB78'} : {color: '#F56565'}]}>
+                  {(isMoving || isWalking) ? 'WALKING' : 'STATIONARY'}
+                </Text>
+              </View>
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Lux/Mag</Text>
+                <Text style={styles.debugValue}>{Math.round(lux)} / {motionMagnitude.toFixed(2)}</Text>
+              </View>
+            </View>
+            
+            {Platform.OS === 'web' && (
+              <TouchableOpacity style={styles.simButton} onPress={forcePocket}>
+                <Text style={styles.simButtonText}>
+                  {isInPocket ? '🔓 Exit Pocket (Sim)' : '🛡️ Enter Pocket (Sim)'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         <View style={{ height: 40 }} />
@@ -948,5 +974,46 @@ const styles = StyleSheet.create({
   simButtonText: {
     color: '#4A5568',
     fontWeight: '700',
+  },
+  debugCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 24,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#CBD5E0',
+  },
+  debugTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#718096',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  debugGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  debugItem: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F7FAFC',
+    padding: 8,
+    borderRadius: 8,
+  },
+  debugLabel: {
+    fontSize: 10,
+    color: '#718096',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  debugValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2D3748',
   },
 });
