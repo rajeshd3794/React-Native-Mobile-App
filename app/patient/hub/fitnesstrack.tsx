@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, isPhysicallyInPocket, hasEnteredPocket, lux, isLightSensorAvailable, isMoving, motionMagnitude, debugMode, setDebugMode, isArmed, toggleArm } = useActivity();
+  const { steps, calories, duration, isTracking, toggleTracking, resetActivity } = useActivity();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -306,23 +306,6 @@ export default function PatientFitnessTrack() {
             <Text style={styles.permissionText}>⚠️ Permission Missing: Tap to fix</Text>
           </TouchableOpacity>
         )}
-        {/* Status Indicator */}
-        {isTracking && (
-          <TouchableOpacity 
-            style={[styles.statusBanner, { backgroundColor: isArmed ? (isInPocket ? ((isWalking || isMoving) ? '#48BB78' : '#ECC94B') : '#ED8936') : '#A0AEC0' }]} 
-            onPress={toggleArm}
-            activeOpacity={0.8}
-          >
-             <Text style={styles.statusText}>
-               {!isArmed 
-                 ? '🛡️ Tap here to Arm Pocket Sensor'
-                 : (!isInPocket 
-                   ? '☝️ Waiting (Place in pocket to track)' 
-                   : (!(isWalking || isMoving) ? '👣 Start walking to track' : '✅ Tracking Live Stats...'))}
-             </Text>
-          </TouchableOpacity>
-        )}
-
         {/* Activity Summary */}
         <View style={styles.summaryCard}>
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
@@ -363,29 +346,6 @@ export default function PatientFitnessTrack() {
              <Text style={styles.accuracyHint}>Tip: Keep phone in pocket for best step accuracy</Text>
           )}
 
-          {isTracking && (
-            <View style={{ marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
-              <Text style={[styles.cardTitle, { fontSize: 14, marginBottom: 12 }]}>Sensor Diagnostic</Text>
-              <View style={styles.debugGrid}>
-                <View style={styles.debugItem}>
-                  <Text style={styles.debugLabel}>Pocket Sensor</Text>
-                  <Text style={[styles.debugValue, isInPocket ? {color: '#48BB78'} : {color: '#F56565'}]}>
-                    {isInPocket ? 'ACTIVE' : 'IDLE'}
-                  </Text>
-                </View>
-                <View style={styles.debugItem}>
-                  <Text style={styles.debugLabel}>Motion Detect</Text>
-                  <Text style={[styles.debugValue, (isMoving || isWalking) ? {color: '#48BB78'} : {color: '#F56565'}]}>
-                    {(isMoving || isWalking) ? 'WALKING' : 'STATIONARY'}
-                  </Text>
-                </View>
-                <View style={styles.debugItem}>
-                  <Text style={styles.debugLabel}>Lux/Mag</Text>
-                  <Text style={styles.debugValue}>{Math.round(lux)} / {motionMagnitude.toFixed(2)}</Text>
-                </View>
-              </View>
-            </View>
-          )}
         </View>
 
         {/* Real-time Metrics (Graph) */}

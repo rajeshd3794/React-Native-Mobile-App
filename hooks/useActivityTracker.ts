@@ -27,8 +27,6 @@ export const useActivityTracker = () => {
   const [isVertical, setIsVertical] = useState(false);
   const [isJittering, setIsJittering] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
-  const [isArmed, setIsArmed] = useState(false);
-  const toggleArm = () => setIsArmed(prev => !prev);
   
   // Track steps taken BEFORE the current start command
   const [baseSteps, setBaseSteps] = useState(0);
@@ -113,7 +111,7 @@ export const useActivityTracker = () => {
   // 1. Android/LightSensor: < 60 lux (Relaxed for thin pockets)
   // 2. iOS/No-Sensor: Vertical Tilt > 0.4 (Relaxed for baggy pockets)
   const isPhysicallyInPocket = isLightSensorAvailable ? (lux < 60) : isVertical;
-  const isInPocket = isArmed && isPhysicallyInPocket;
+  const isInPocket = isPhysicallyInPocket;
 
   // Sync refs that are used in intervals and listeners
   useEffect(() => { 
@@ -253,9 +251,9 @@ export const useActivityTracker = () => {
         const now = Date.now();
         const newDuration = Math.floor((now - startTime) / 1000);
         
-        // Gated Logic: Increment duration if in pocket, OR if it has not entered the pocket yet.
-        // This makes duration start immediately, but pause when taken out.
-        if (isInPocketRef.current || !hasEnteredPocketRef.current) {
+        // Gated Logic: Increment duration ONLY if in pocket AND walking
+        // This strictly pauses duration when standing still
+        if (isInPocketRef.current && isWalkingRef.current) {
            setDuration(prev => {
              const next = prev + 1;
              AsyncStorage.setItem(STORAGE_DURATION, next.toString());
@@ -398,8 +396,6 @@ export const useActivityTracker = () => {
     isMoving,
     motionMagnitude,
     debugMode,
-    setDebugMode: () => setDebugMode(prev => !prev),
-    isArmed,
-    toggleArm
+    setDebugMode: () => setDebugMode(prev => !prev)
   };
 };
