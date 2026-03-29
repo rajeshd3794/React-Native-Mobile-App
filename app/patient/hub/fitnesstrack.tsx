@@ -308,13 +308,24 @@ export default function PatientFitnessTrack() {
         )}
         {/* Status Indicator */}
         {isTracking && (
-          <View style={[styles.statusBanner, { backgroundColor: isInPocket ? ((isWalking || isMoving) ? '#48BB78' : '#ECC94B') : '#ED8936' }]}>
-            <Text style={styles.statusText}>
-              {!isInPocket 
-                ? (isLightSensorAvailable === false ? '🛡️ Manual Mode: Keep moving!' : '☝️ Place in pocket to track') 
-                : (!(isWalking || isMoving) ? '👣 Start walking to track' : '✅ Tracking Live Stats...')}
-            </Text>
-          </View>
+          isLightSensorAvailable === false ? (
+            <TouchableOpacity 
+              style={[styles.statusBanner, { backgroundColor: isInPocket ? '#48BB78' : '#ED8936' }]} 
+              onPress={() => forcePocket()}
+            >
+               <Text style={styles.statusText}>
+                 {isInPocket ? '🔓 Exit Pocket (Sim)' : '🛡️ Enter Pocket (Sim)'}
+               </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.statusBanner, { backgroundColor: isInPocket ? ((isWalking || isMoving) ? '#48BB78' : '#ECC94B') : '#ED8936' }]}>
+              <Text style={styles.statusText}>
+                {!isInPocket 
+                  ? '☝️ Place in pocket to track' 
+                  : (!(isWalking || isMoving) ? '👣 Start walking to track' : '✅ Tracking Live Stats...')}
+              </Text>
+            </View>
+          )
         )}
 
         {/* Activity Summary */}
@@ -364,6 +375,40 @@ export default function PatientFitnessTrack() {
             <Text style={styles.testStepText}>🏃 Simulate Walking (+50 steps)</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Simulation & Debug Controls (Moved under Activity Summary) */}
+        {isTracking && (
+          <View style={[styles.debugCard, {marginBottom: 24}]}>
+            <Text style={styles.debugTitle}>Sensor Diagnostic</Text>
+            <View style={styles.debugGrid}>
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Pocket Sensor</Text>
+                <Text style={[styles.debugValue, isInPocket ? {color: '#48BB78'} : {color: '#F56565'}]}>
+                  {isInPocket ? 'ACTIVE' : 'IDLE'}
+                </Text>
+              </View>
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Motion Detect</Text>
+                <Text style={[styles.debugValue, (isMoving || isWalking) ? {color: '#48BB78'} : {color: '#F56565'}]}>
+                  {(isMoving || isWalking) ? 'WALKING' : 'STATIONARY'}
+                </Text>
+              </View>
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Lux/Mag</Text>
+                <Text style={styles.debugValue}>{Math.round(lux)} / {motionMagnitude.toFixed(2)}</Text>
+              </View>
+            </View>
+            
+            <TouchableOpacity 
+              style={[styles.simButton, {marginTop: 8, backgroundColor: debugMode ? '#F6AD55' : '#4A5568'}]} 
+              onPress={setDebugMode}
+            >
+              <Text style={styles.simButtonText}>
+                {debugMode ? '🛠️ Disable Debug Mode' : '🛠️ Enable Debug Mode'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Real-time Metrics (Graph) */}
         <Text style={styles.sectionTitle}>Real-time Metrics</Text>
@@ -533,48 +578,6 @@ export default function PatientFitnessTrack() {
              <Text style={styles.navButtonText}>Fitness Plan</Text>
            </TouchableOpacity>
         </View>
-
-        {/* Simulation & Debug Controls */}
-        {isTracking && (
-          <View style={styles.debugCard}>
-            <Text style={styles.debugTitle}>Sensor Diagnostic</Text>
-            <View style={styles.debugGrid}>
-              <View style={styles.debugItem}>
-                <Text style={styles.debugLabel}>Pocket Sensor</Text>
-                <Text style={[styles.debugValue, isInPocket ? {color: '#48BB78'} : {color: '#F56565'}]}>
-                  {isInPocket ? 'ACTIVE' : 'IDLE'}
-                </Text>
-              </View>
-              <View style={styles.debugItem}>
-                <Text style={styles.debugLabel}>Motion Detect</Text>
-                <Text style={[styles.debugValue, (isMoving || isWalking) ? {color: '#48BB78'} : {color: '#F56565'}]}>
-                  {(isMoving || isWalking) ? 'WALKING' : 'STATIONARY'}
-                </Text>
-              </View>
-              <View style={styles.debugItem}>
-                <Text style={styles.debugLabel}>Lux/Mag</Text>
-                <Text style={styles.debugValue}>{Math.round(lux)} / {motionMagnitude.toFixed(2)}</Text>
-              </View>
-            </View>
-            
-            {Platform.OS === 'web' && (
-              <TouchableOpacity style={styles.simButton} onPress={forcePocket}>
-                <Text style={styles.simButtonText}>
-                  {isInPocket ? '🔓 Exit Pocket (Sim)' : '🛡️ Enter Pocket (Sim)'}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity 
-              style={[styles.simButton, {marginTop: 8, backgroundColor: debugMode ? '#F6AD55' : '#4A5568'}]} 
-              onPress={setDebugMode}
-            >
-              <Text style={styles.simButtonText}>
-                {debugMode ? '🛠️ Disable Debug Mode' : '🛠️ Enable Debug Mode'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
