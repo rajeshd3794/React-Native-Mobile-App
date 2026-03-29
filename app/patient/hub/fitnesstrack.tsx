@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 export default function PatientFitnessTrack() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, lux, forcePocket, isLightSensorAvailable, isMoving, motionMagnitude, debugMode, setDebugMode, simulateWalk } = useActivity();
+  const { steps, calories, duration, isWalking, isTracking, toggleTracking, resetActivity, permissionStatus, isInPocket, hasEnteredPocket, lux, forcePocket, isLightSensorAvailable, isMoving, motionMagnitude, debugMode, setDebugMode, simulateWalk } = useActivity();
   
   // Real-time Heart Rate State
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -322,10 +322,17 @@ export default function PatientFitnessTrack() {
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
             <Text style={styles.cardTitle}>Activity Summary</Text>
             {isTracking ? (
-              <View style={styles.trackingActiveIndicator}>
-                <View style={[styles.activeDot, isWalking && { backgroundColor: '#48BB78', transform: [{ scale: stepPulse ? 1.5 : 1 }] }]} />
-                <Text style={styles.activeText}>{isWalking ? 'WALKING...' : 'ACTIVE'}</Text>
-              </View>
+              (!isInPocket && hasEnteredPocket) ? (
+                <View style={styles.trackingActiveIndicator}>
+                  <View style={[styles.activeDot, { backgroundColor: '#ECC94B' }]} />
+                  <Text style={[styles.activeText, { color: '#ECC94B' }]}>PAUSED (Out of pocket)</Text>
+                </View>
+              ) : (
+                <View style={styles.trackingActiveIndicator}>
+                  <View style={[styles.activeDot, isWalking && { backgroundColor: '#48BB78', transform: [{ scale: stepPulse ? 1.5 : 1 }] }]} />
+                  <Text style={styles.activeText}>{isWalking ? 'WALKING...' : 'ACTIVE'}</Text>
+                </View>
+              )
             ) : (
               <Text style={{fontSize: 12, color: '#A0AEC0', fontWeight: '700'}}>PAUSED</Text>
             )}

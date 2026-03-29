@@ -9,6 +9,7 @@ const STORAGE_DURATION = 'activity_duration';
 const STORAGE_IS_TRACKING = 'activity_is_tracking';
 const STORAGE_START_TIME = 'activity_start_time';
 const STORAGE_LAST_SYNC_TIME = 'activity_last_sync_time';
+const STORAGE_HAS_ENTERED = 'activity_has_entered';
 
 export const useActivityTracker = () => {
   const [steps, setSteps] = useState(0);
@@ -35,6 +36,9 @@ export const useActivityTracker = () => {
   const lastStepTimeRef = useRef<number>(0);
   const previousSessionStepsRef = useRef<number>(0);
 
+  const [hasEnteredPocket, setHasEnteredPocket] = useState(false);
+  const hasEnteredPocketRef = useRef(false);
+
   const isInPocketRef = useRef(false);
   const isWalkingRef = useRef(false);
   const isMovingRef = useRef(false);
@@ -54,7 +58,13 @@ export const useActivityTracker = () => {
         const savedTracking = await AsyncStorage.getItem(STORAGE_IS_TRACKING);
         const savedStartTime = await AsyncStorage.getItem(STORAGE_START_TIME);
         const savedLastSync = await AsyncStorage.getItem(STORAGE_LAST_SYNC_TIME);
+        const savedHasEntered = await AsyncStorage.getItem(STORAGE_HAS_ENTERED);
         
+        if (savedHasEntered === 'true') {
+          setHasEnteredPocket(true);
+          hasEnteredPocketRef.current = true;
+        }
+
         if (savedSteps) {
           const s = parseInt(savedSteps, 10);
           setSteps(s);
@@ -104,7 +114,15 @@ export const useActivityTracker = () => {
   const isInPocket = forcePocket || (isLightSensorAvailable ? (lux < 60) : isVertical);
 
   // Sync refs that are used in intervals and listeners
-  useEffect(() => { isInPocketRef.current = isInPocket; }, [isInPocket]);
+  useEffect(() => { 
+    isInPocketRef.current = isInPocket; 
+    if (isTracking && isInPocket && !hasEnteredPocketRef.current) {
+      setHasEnteredPocket(true);
+      hasEnteredPocketRef.current = true;
+      AsyncStorage.setItem(STORAGE_HAS_ENTERED, 'true');
+    }
+  }, [isInPocket, isTracking]);
+
   useEffect(() => { isWalkingRef.current = isWalking; }, [isWalking]);
   useEffect(() => { isMovingRef.current = isMoving; }, [isMoving]);
 
@@ -233,10 +251,14 @@ export const useActivityTracker = () => {
         const now = Date.now();
         const newDuration = Math.floor((now - startTime) / 1000);
         
-        // Gated Logic: Increment duration if user is moving (even if steps haven't fired yet)
-        if (isInPocketRef.current && (isWalkingRef.current || isMovingRef.current)) {
-           setDuration(newDuration);
-           AsyncStorage.setItem(STORAGE_DURATION, newDuration.toString());
+        // Gated Logic: Increment duration if in pocket, OR if it has not entered the pocket yet.
+        // This makes duration start immediately, but pause when taken out.
+        if (isInPocketRef.current || !hasEnteredPocketRef.current) {
+           setDuration(prev => {
+             const next = prev + 1;
+             AsyncStorage.setItem(STORAGE_DURATION, next.toString());
+             return next;
+           });
         }
 
         // Watchdog: If no steps in 2.5 seconds, set isWalking to false
@@ -325,6 +347,8 @@ export const useActivityTracker = () => {
     setCalories(0);
     setDuration(0);
     setIsWalking(false);
+    setHasEnteredPocket(false);
+    hasEnteredPocketRef.current = false;
     
     // 3. Clear persistent storage
     try {
@@ -334,7 +358,8 @@ export const useActivityTracker = () => {
         STORAGE_DURATION, 
         STORAGE_IS_TRACKING,
         STORAGE_START_TIME,
-        STORAGE_LAST_SYNC_TIME
+        STORAGE_LAST_SYNC_TIME,
+        STORAGE_HAS_ENTERED
       ]);
     } catch (e) {
       console.error("Failed to clear activity storage", e);
@@ -364,6 +389,7 @@ export const useActivityTracker = () => {
     isPedometerAvailable,
     permissionStatus,
     isInPocket,
+    hasEnteredPocket,
     lux,
     isLightSensorAvailable,
     isMoving,
