@@ -210,19 +210,15 @@ export const useActivityTracker = () => {
             return newDuration;
           });
           
-          // Increment steps simulation for Web/No-Pedometer devices
+          // Increment steps simulation for Web/No-Pedometer devices (Works in-hand or pocket)
           if (Platform.OS === 'web' || isPedometerAvailable === 'false') {
-            if (isPocketedRef.current || Platform.OS === 'web') {
-              setSteps(prev => {
-                const nextSteps = prev + Math.floor(Math.random() * (2 * delta + 1)); 
-                setCalories(Math.round(nextSteps * 0.04));
-                AsyncStorage.setItem(STORAGE_STEPS, nextSteps.toString());
-                return nextSteps;
-              });
-              setIsWalking(true);
-            } else {
-              setIsWalking(false);
-            }
+            setSteps(prev => {
+              const nextSteps = prev + Math.floor(Math.random() * (2 * delta + 1)); 
+              setCalories(Math.round(nextSteps * 0.04));
+              AsyncStorage.setItem(STORAGE_STEPS, nextSteps.toString()).catch(() => {});
+              return nextSteps;
+            });
+            setIsWalking(true);
           }
           
           lastTickRef.current = now;
