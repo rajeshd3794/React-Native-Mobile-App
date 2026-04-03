@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Platform, Dimensions, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useActivity } from '../../../context/ActivityContext';
 import HeartRateMonitor from '../../../components/HeartRateMonitor';
 
@@ -10,34 +9,18 @@ const { width } = Dimensions.get('window');
 
 export default function PatientFitnessTrack() {
   const router = useRouter();
-  const [permission, requestPermission] = useCameraPermissions();
   const { steps, calories, duration, isWalking, isTracking, isPocketed, toggleTracking, resetActivity, permissionStatus, locationPermission, isPedometerAvailable } = useActivity();
   
   // Real-time Heart Rate State
-  const [isMeasuring, setIsMeasuring] = useState(false);
-  const isMeasuringRef = useRef(false);
-  const [isFingerPlaced, setIsFingerPlaced] = useState(false);
-  const isFingerPlacedRef = useRef(false);
-  const [heart_bpm, setHeartBpm] = useState(75);
-  const [heartRateHistory, setHeartRateHistory] = useState([65, 72, 68, 85, 92, 78, 70, 68, 75, 82]);
-  const [measurementProgress, setMeasurementProgress] = useState(0);
-  const measurementProgressRef = useRef(0);
-  const [flashSupported, setFlashSupported] = useState(true);
   const [showMonitor, setShowMonitor] = useState(false);
-  
-  // Web-specific PPG Refs
-  const videoRef = useRef<any>(null);
-  const canvasRef = useRef<any>(null);
-  const animationRef = useRef<number | null>(null);
 
   const maxHR = 120;
 
   const [stepPulse, setStepPulse] = useState(false);
 
   // Sync refs with state
-  useEffect(() => { isMeasuringRef.current = isMeasuring; }, [isMeasuring]);
-  useEffect(() => { isFingerPlacedRef.current = isFingerPlaced; }, [isFingerPlaced]);
-  useEffect(() => { measurementProgressRef.current = measurementProgress; }, [measurementProgress]);
+  const [heart_bpm, setHeartBpm] = useState(75);
+  const [heartRateHistory, setHeartRateHistory] = useState([65, 72, 68, 85, 92, 78, 70, 68, 75, 82]);
 
   // Pulse effect when steps increase
   useEffect(() => {
@@ -62,203 +45,9 @@ export default function PatientFitnessTrack() {
     }
   }, [isTracking, permissionStatus]);
 
-  // PPG Algorithm for Web
-  useEffect(() => {
-    if (Platform.OS === 'web' && isMeasuring) {
-      const startWebPPG = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 640 },
-              height: { ideal: 480 }
-            } 
-          });
-          
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play();
-            
-            // Wait for tracks and REFS to be ready
-            let attempt = 0;
-            const checkReady = setInterval(async () => {
-              attempt++;
-              if (videoRef.current && canvasRef.current) {
-                clearInterval(checkReady);
-                
-                const track = stream.getVideoTracks()[0];
-                try {
-                  const capabilities = (track as any).getCapabilities?.() || {};
-                  if (capabilities.torch) {
-                     setFlashSupported(true);
-                     await track.applyConstraints({
-                       advanced: [{ torch: true }]
-                     } as any);
-                  } else {
-                     setFlashSupported(false);
-                  }
-                } catch (e) {
-                  console.warn("Torch failed:", e);
-                  setFlashSupported(false);
-                }
-                
-                processFrames();
-              } else if (attempt > 20) {
-                clearInterval(checkReady);
-                Alert.alert("Camera Error", "Could not initialize PPG sensor. Please refresh.");
-                setIsMeasuring(false);
-              }
-            }, 100);
-          }
-        } catch (err) {
-          console.error("Web Camera Error:", err);
-          Alert.alert("Camera Access Error", "Unable to access camera for heart rate. Please check browser permissions.");
-          setIsMeasuring(false);
-        }
-      };
+  // Logic removed: Delegated to HeartRateMonitor component
 
-      const processFrames = () => {
-        const canvas = canvasRef.current;
-        const video = videoRef.current;
-        if (!canvas || !video) return;
-
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        let lastBpmUpdate = Date.now();
-        
-        // Signal Processing State
-        let signalWindow: number[] = [];
-        const windowSize = 100; // ~3.3 seconds at 30fps
-        let lastFingerState = false;
-        let lastPeakTime = 0;
-        let beatIntervals: number[] = [];
-
-        // Low-pass filter for smoothing
-        let lowPassValue = 0;
-        const alpha = 0.15; // Smoothness factor
-
-        const loop = () => {
-          if (!isMeasuringRef.current) return;
-          
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const data = frame.data;
-          
-          let totalRed = 0;
-          let totalGreen = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            totalRed += data[i]; 
-            totalGreen += data[i+1];
-          }
-          const pixelCount = data.length / 4;
-          const avgRed = totalRed / pixelCount;
-          const avgGreen = totalGreen / pixelCount;
-          
-          // Smart Finger Detection (Lowered threshold for better compatibility)
-          const detected = avgRed > 150;
-          if (detected !== isFingerPlacedRef.current) {
-            setIsFingerPlaced(detected);
-            // The ref is synced via useEffect, but we update locally for immediate logic
-            isFingerPlacedRef.current = detected; 
-            
-            if (!detected && measurementProgressRef.current > 0.1) {
-              setIsMeasuring(false);
-              return;
-            }
-          }
-
-          if (detected) {
-            const rawSignal = (avgRed + avgGreen) / 2;
-            lowPassValue = lowPassValue + alpha * (rawSignal - lowPassValue);
-            signalWindow.push(lowPassValue);
-            if (signalWindow.length > windowSize) signalWindow.shift();
-
-            if (signalWindow.length >= 30) {
-              const now = Date.now();
-              const minInWindow = Math.min(...signalWindow);
-              const maxInWindow = Math.max(...signalWindow);
-              const range = maxInWindow - minInWindow;
-              const threshold = minInWindow + (range * 0.55);
-              
-              const current = signalWindow[signalWindow.length - 1];
-              const prev = signalWindow[signalWindow.length - 2];
-              const prevPrev = signalWindow[signalWindow.length - 3];
-
-              if (prev > threshold && prev > current && prev > prevPrev) {
-                const timeSinceLastPeak = now - lastPeakTime;
-                if (timeSinceLastPeak > 350 && timeSinceLastPeak < 1500) {
-                  const instantBpm = 60000 / timeSinceLastPeak;
-                  if (instantBpm > 45 && instantBpm < 180) {
-                    beatIntervals.push(instantBpm);
-                    if (beatIntervals.length > 5) beatIntervals.shift();
-                    const smoothedBpm = Math.round(beatIntervals.reduce((a,b) => a+b, 0) / beatIntervals.length);
-                    setHeartBpm(smoothedBpm);
-                    lastPeakTime = now;
-                    if (now - lastBpmUpdate > 1000) {
-                      setHeartRateHistory(prevHistory => [...prevHistory.slice(1), smoothedBpm]);
-                      lastBpmUpdate = now;
-                    }
-                  }
-                }
-              }
-            }
-            setMeasurementProgress(prev => Math.min(prev + 0.005, 1));
-          } else {
-            signalWindow = [];
-            beatIntervals = [];
-            setMeasurementProgress(0);
-          }
-
-          animationRef.current = requestAnimationFrame(loop);
-        };
-
-        animationRef.current = requestAnimationFrame(loop);
-      };
-
-      startWebPPG();
-    }
-
-    return () => {
-      setIsFingerPlaced(false);
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = videoRef.current.srcObject.getTracks();
-        tracks.forEach((t: any) => {
-          if (t.applyConstraints) {
-            t.applyConstraints({ advanced: [{ torch: false }] } as any).finally(() => t.stop());
-          } else {
-            t.stop();
-          }
-        });
-      }
-    };
-  }, [isMeasuring]);
-
-  // Mobile Implementation Logic (Enhanced Professional Simulation)
-  useEffect(() => {
-    let interval: any;
-    if (Platform.OS !== 'web' && isMeasuring) {
-      let mockBpm = 72;
-      interval = setInterval(() => {
-        if (isFingerPlaced) {
-          setMeasurementProgress(prev => {
-            if (prev >= 1) {
-               // Smooth transitions for mock data
-               mockBpm = mockBpm + (Math.random() * 2 - 1);
-               const finalBpm = Math.max(60, Math.min(100, Math.round(mockBpm)));
-               setHeartBpm(finalBpm);
-               setHeartRateHistory(h => [...h.slice(1), finalBpm]);
-               return 0;
-            }
-            return prev + 0.05;
-          });
-        }
-      }, 100);
-    }
-    return () => {
-      clearInterval(interval);
-      setIsFingerPlaced(false);
-    };
-  }, [isMeasuring, isFingerPlaced]);
+  // Logic removed: Delegated to HeartRateMonitor component
 
   const toggleMeasurement = () => {
     setShowMonitor(true);
@@ -269,7 +58,6 @@ export default function PatientFitnessTrack() {
   const handleMeasurementResult = (finalBpm: number) => {
     setHeartBpm(finalBpm);
     setHeartRateHistory(prev => [...prev.slice(1), finalBpm]);
-    setIsFingerPlaced(true);
     setBpmPulse(true);
     setTimeout(() => {
       setBpmPulse(false);
@@ -360,14 +148,6 @@ export default function PatientFitnessTrack() {
           <View style={styles.graphHeader}>
             <View>
               <Text style={styles.graphTitle}>Heart Rate BPM</Text>
-              {isMeasuring && (
-                <View style={styles.measuringIndicator}>
-                  <View style={[styles.pulseDot, { backgroundColor: isFingerPlaced ? '#F56565' : '#718096', opacity: measurementProgress > 0.5 ? 1 : 0.3 }]} />
-                  <Text style={[styles.measuringText, { color: isFingerPlaced ? '#FEB2B2' : '#A0AEC0' }]}>
-                    {isFingerPlaced ? 'Algorithm Active...' : 'Waiting for finger...'}
-                  </Text>
-                </View>
-              )}
             </View>
 
             <Text style={[styles.graphValue, bpmPulse && { color: '#FEB2B2', transform: [{ scale: 1.1 }] }]}>
@@ -384,84 +164,25 @@ export default function PatientFitnessTrack() {
                     { 
                       height: (val / maxHR) * 100,
                       backgroundColor: val > 100 ? '#F56565' : '#4299E1',
-                      opacity: isFingerPlaced ? 1 : 0.4
                     }
                   ]} 
                 />
               </View>
             ))}
           </View>
-          
-          {isMeasuring && !isFingerPlaced && (
-             <View style={styles.fingerHintOverlay}>
-               <Text style={styles.fingerHintText}>👆 Place finger firmly over camera & flash to start</Text>
-             </View>
-          )}
 
           <View style={styles.graphFooter}>
             <TouchableOpacity 
-              style={[styles.measureButton, isMeasuring && styles.stopButton]} 
+              style={styles.measureButton} 
               onPress={toggleMeasurement}
             >
-              <Text style={styles.measureButtonText}>
-                {isMeasuring ? '⏹ Stop Measurement' : '❤️ Start Measure'}
-              </Text>
+              <Text style={styles.measureButtonText}>❤️ Start Measure</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* PPG Sensor Interface (Visible when measuring) */}
-        {isMeasuring && (
-          <View style={styles.sensorContainer}>
-            {Platform.OS === 'web' ? (
-              <View style={styles.webSensor}>
-                <video ref={videoRef} style={{ display: 'none' }} />
-                <canvas ref={canvasRef} width="100" height="100" style={styles.miniCanvas} />
-                <Text style={[styles.sensorHint, { color: isFingerPlaced ? '#48BB78' : '#FFFFFF' }]}>
-                  {isFingerPlaced ? 'Finger Detected ✓' : 'Keep finger steady over camera'}
-                </Text>
-                {!flashSupported && (
-                  <View style={styles.flashWarning}>
-                    <Text style={styles.flashWarningText}>⚠️ Browser doesn't support auto-flash.</Text>
-                    <Text style={[styles.flashWarningText, { fontSize: 11, marginTop: 2 }]}>Please turn on your flashlight manually for accuracy.</Text>
-                  </View>
-                )}
-              </View>
-            ) : (
-              <View style={styles.mobileSensor}>
-                <CameraView 
-                   style={styles.miniCamera} 
-                   facing="back"
-                   enableTorch={true}
-                />
-                <TouchableOpacity 
-                  activeOpacity={1}
-                  style={[styles.sensorOverlay, isFingerPlaced && { backgroundColor: 'rgba(245, 101, 101, 0.3)' }]}
-                  onPressIn={() => setIsFingerPlaced(true)}
-                  onPressOut={() => {
-                    setIsFingerPlaced(false);
-                    // Automatic Stop requirement: End measure immediately when finger removed
-                    if (measurementProgress > 0) {
-                      setIsMeasuring(false);
-                    }
-                  }}
-                >
-                   <Text style={[styles.sensorEmoji, { transform: [{ scale: isFingerPlaced ? 1.2 : 1 }] }]}>
-                     {isFingerPlaced ? '❤️' : '👆'}
-                   </Text>
-                   <Text style={styles.sensorHint}>
-                     {isFingerPlaced ? 'Hold steady...' : 'Place finger over camera & pulse'}
-                   </Text>
-                   {isFingerPlaced && (
-                     <View style={styles.progressContainer}>
-                        <View style={[styles.progressFill, { width: `${measurementProgress * 100}%` }]} />
-                     </View>
-                   )}
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
+        {/* PPG Sensor Interface handled by HeartRateMonitor Modal */}
 
         {/* Goals Meter */}
         <Text style={styles.sectionTitle}>Goals Meter</Text>
@@ -711,114 +432,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 15,
   },
-  fingerHintOverlay: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 12,
-    padding: 12,
-    marginTop: -10,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#4A5568',
-    alignItems: 'center',
-  },
-  fingerHintText: {
-    color: '#A0AEC0',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  sensorContainer: {
-    marginBottom: 32,
-  },
-  webSensor: {
-    backgroundColor: '#000',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-  },
-  miniCanvas: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: '#48BB78',
-    marginBottom: 8,
-  },
-  mobileSensor: {
-    height: 140,
-    backgroundColor: '#000',
-    borderRadius: 24,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  miniCamera: {
-    width: '100%',
-    height: '100%',
-    opacity: 0.6,
-  },
-  sensorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  sensorEmoji: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  sensorHint: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  flashWarning: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: 'rgba(245, 101, 101, 0.2)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#F56565',
-    width: '100%',
-  },
-  flashWarningText: {
-    color: '#FEB2B2',
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  progressContainer: {
-    width: '100%',
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#48BB78',
-    borderRadius: 3,
-  },
-  measuringIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#F56565',
-    marginRight: 6,
-  },
-  measuringText: {
-    fontSize: 11,
-    color: '#FEB2B2',
-    fontWeight: '700',
-  },
   goalsCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -910,6 +523,7 @@ const styles = StyleSheet.create({
   navLinks: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 20,
   },
   navButton: {
     flex: 1,
