@@ -76,7 +76,7 @@ The production bundle is hosted on Surge. To re-deploy:
 ```bash
 node deploy.js
 ```
-URL: [medicore-patients-app.surge.sh](https://medicore-patients-app.surge.sh)
+URL: [meditrack-portal-app.surge.sh](https://meditrack-portal.surge.sh)
 
 ### 2. Mobile (OTA Updates)
 To push new code changes directly to installed apps without a new store submission:

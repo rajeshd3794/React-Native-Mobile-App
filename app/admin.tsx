@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';

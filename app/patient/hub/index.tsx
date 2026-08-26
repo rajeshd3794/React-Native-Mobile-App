@@ -7,7 +7,6 @@ import { getPatientByUsername, Patient } from '../../../db/db';
 import { useActivity } from '../../../context/ActivityContext';
 import { saveHeartRate, initHealthServices } from '../../../services/healthService';
 import HeartRateMonitor from '../../../components/HeartRateMonitor';
-import { MobileAIAssistantModal } from '../../../components/AIAssistant';
 
 export default function PatientHub() {
   const router = useRouter();
@@ -22,7 +21,6 @@ export default function PatientHub() {
   // Heart Rate Features
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [bpm, setBpm] = useState<number | null>(null);
-  const [isAIOpen, setIsAIOpen] = useState(false);
 
   useEffect(() => {
     const fetchPatientData = async () => {
@@ -98,15 +96,9 @@ export default function PatientHub() {
             <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu(); router.push('/patient/hub/fitnesstrack'); }}>
               <Text style={styles.menuItemText}>🏃 Patient fitness track</Text>
             </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { toggleMenu(); setIsAIOpen(true); }}>
-              <Text style={styles.menuItemText}>🤖 Ask AI Assistant</Text>
-            </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
-
-      <MobileAIAssistantModal visible={isAIOpen} onClose={() => setIsAIOpen(false)} />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Hub Overview */}
