@@ -205,117 +205,74 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
       const loggedInUser = await AsyncStorage.getItem('logged_in_patient');
       const dynamicPrompt = getDynamicSystemPrompt(currentPath, loggedInUser);
 
-      const apiKey = process.env.EXPO_PUBLIC_LLM_API_KEY || "YOUR_GROQ_OR_HF_TOKEN_HERE";
+      const apiKey = process.env.EXPO_PUBLIC_LLM_API_KEY || "";
+      let aiAnswer = '';
 
-      if (!apiKey || apiKey.includes('your_') || apiKey === "YOUR_GROQ_OR_HF_TOKEN_HERE") {
-        setTimeout(() => {
-          setMessages(prev => [...prev, { id: Date.now().toString(), text: "Please assign a valid Hugging Face (hf_) or Groq (gsk_) token to EXPO_PUBLIC_LLM_API_KEY in the .env file and clear cache to restart.", isUser: false, role: 'assistant' }]);
-          setIsTyping(false);
-        }, 500);
-        return;
-      }
+      if (apiKey && (isGroq || isHF)) {
+        const targetUrl = isGroq ? GROQ_API_URL : HF_API_URL;
+        const targetModel = isGroq ? 'llama-3.1-8b-instant' : 'google/gemma-2-9b-it';
 
-      const isGroq = apiKey.startsWith('gsk_');
-      const targetUrl = isGroq ? GROQ_API_URL : HF_API_URL;
-      const targetModel = isGroq ? 'llama-3.1-8b-instant' : 'google/gemma-2-9b-it';
+        const apiMessages = [
+          { role: 'system', content: dynamicPrompt },
+        ];
 
-      // Format history with Dynamic Prompt
-      const apiMessages = [
-        { role: 'system', content: dynamicPrompt },
-        ...updatedMessages.filter(m => m.id !== 'initial').map(m => ({ role: m.role, content: m.text }))
-      ];
-
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: targetModel,
-          messages: apiMessages,
-          temperature: 0.3,
-          max_tokens: 500
-        })
-      });
-
-      const data = await response.json();
-      
-      if (response.ok && data.choices && data.choices.length > 0) {
-        let aiAnswer = data.choices[0].message.content;
-        
-        // Navigation Logic
-        const navMatch = aiAnswer.match(/\[\[NAVIGATE:\s*([^\]]+)\]\]/);
-        if (navMatch) {
-          const targetPath = navMatch[1].trim();
-          
-          // Security Guard: Check if user is logged in before allowing dashboard navigation
-          if (targetPath.includes('/patient-records/patient-info')) {
-            const session = await AsyncStorage.getItem('logged_in_patient');
-            if (!session) {
-              setMessages(prev => [...prev, { 
-                id: Date.now().toString(), 
-                text: "Please enter both username and password.", 
-                isUser: false, 
-                role: 'assistant' 
-              }]);
-              setIsTyping(false);
-              return; // Stop processing and block navigation
+        try {
+          const response = await fetch(targetUrl, {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: targetModel,
+              messages: apiMessages,
+              temperature: 0.3,
+          if (response.ok) {
+            const data = await response.json();
+            if (data.choices && data.choices.length > 0) {
+              aiAnswer = data.choices[0].message.content;
             }
           }
-
-          // Clean the answer for display
-          aiAnswer = aiAnswer.replace(/\[\[NAVIGATE:\s*[^\]]+\]\]/g, '').trim();
-          
-          // Trigger navigation
-          setTimeout(() => {
-             // WE REMOVE onClose?.() here to allow user to close manually
-             router.push(targetPath as any);
-          }, 1500); // Small delay so user sees the text first
+        } catch (apiErr) {
+          console.warn('External LLM API fetch error, falling back to local engine:', apiErr);
         }
-
-        // Close/Back Logic
-        if (aiAnswer.includes('[[CLOSE]]')) {
-          aiAnswer = aiAnswer.replace('[[CLOSE]]', '').trim();
-          setTimeout(() => {
-            onClose?.();
-            router.back();
-          }, 1000);
-        }
-
-        setMessages(prev => [...prev, { id: Date.now().toString(), text: aiAnswer, isUser: false, role: 'assistant' }]);
-      } else if (response.status === 403) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), text: "Token Error: Your Hugging Face token lacks permissions. Please create a new Fine-Grained token and verify that the 'Make calls to the Serverless Inference API' checkbox is CHECKED.", isUser: false, role: 'assistant' }]);
-      } else {
-        console.warn("LLM API Error:", data);
-        setMessages(prev => [...prev, { id: Date.now().toString(), text: "I'm having trouble connecting to my central servers. Please try again later.", isUser: false, role: 'assistant' }]);
       }
+
+      // Intelligent Local Healthcare & Navigation Engine Fallback
+      if (!aiAnswer) {
+        const query = userMsgText.toLowerCase();
+        } else if (query.includes('patient login') || query.includes('login') || query.includes('sign in')) {
+          aiAnswer = "Patients can sign in to view their medical records and health history here: [[NAVIGATE: /patient-auth]].";
+        } else if (query.includes('hi') || query.includes('hello') || query.includes('hey') || query.includes('help')) {
+          aiAnswer = `Hello! I am your Meditrack Assistant. You are currently on ${currentPath}. How can I assist you with your health records, appointments, or navigation today?`;
+        } else {
+          aiAnswer = `I can help you navigate Meditrack! You can ask me to open your Patient Hub, book appointments, track fitness, measure heart rate, or sign in to your account.`;
+        }
+      }
+
+      // Process navigation markers in answer
+      const navMatch = aiAnswer.match(/\[\[NAVIGATE:\s*([^\]]+)\]\]/);
+      if (navMatch) {
+        const targetPath = navMatch[1].trim();
+        if (targetPath.includes('/patient-records/patient-info')) {
+          const session = await AsyncStorage.getItem('logged_in_patient');
+          if (!session) {
+            setMessages(prev => [...prev, {
+              id: Date.now().toString(),
+              text: "Please enter both username and password to access the patient records dashboard.",
+              isUser: false,
+              role: 'assistant'
+            }]);
+            setIsTyping(false);
+        setTimeout(() => {
+          router.push(targetPath as any);
+        aiAnswer = aiAnswer.replace('[[CLOSE]]', '').trim();
+        setTimeout(() => {
+          onClose?.();
+          router.back();
+        }, 1000);
+      }
+
+      setMessages(prev => [...prev, { id: Date.now().toString(), text: aiAnswer, isUser: false, role: 'assistant' }]);
     } catch (err) {
-      console.error(err);
-      setMessages(prev => [...prev, { id: Date.now().toString(), text: "A network error occurred. Please check your connection.", isUser: false, role: 'assistant' }]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  useEffect(() => {
-    if (scrollViewRef.current) {
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-    }
-  }, [messages, isTyping]);
-
-  return (
-    <KeyboardAvoidingView
-      style={styles.chatContainer}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.chatHeader}>
-        <View style={styles.headerInfo}>
-          <View>
-            <Text style={styles.headerTitle}>Meditrack AI Assistant</Text>
-            <Text style={styles.headerStatus}>{isTyping ? 'Typing...' : isTranscribing ? 'Transcribing Audio...' : 'Online'}</Text>
           </View>
-        </View>
         {onClose && (
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>×</Text>
@@ -324,28 +281,7 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
       </View>
 
       <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesArea}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-      >
-        {messages.map(msg => (
-          <View key={msg.id} style={[styles.messageBubble, msg.isUser ? styles.userBubble : styles.aiBubble]}>
-            <Text style={[styles.messageText, msg.isUser ? styles.userText : styles.aiText]}>{msg.text}</Text>
-          </View>
-        ))}
-        {isTyping && (
-          <View style={[styles.messageBubble, styles.aiBubble, { width: 60, paddingVertical: 12 }]}>
-            <Text style={styles.aiText}>...</Text>
-          </View>
-        )}
-      </ScrollView>
-
       {messages.length <= 2 && (
-        <View style={styles.quickActionsContainer}>
-          <TouchableOpacity style={styles.quickActionBtn} onPress={() => setShowNewOptions(!showNewOptions)} activeOpacity={0.7}>
-            <Text style={styles.quickActionBtnText}>New to Meditrack?</Text>
-            <Text style={styles.quickActionArrow}>{showNewOptions ? '↑' : '↓'}</Text>
-          </TouchableOpacity>
           
           {showNewOptions && (
             <View style={styles.quickActionsDropdown}>
@@ -353,15 +289,7 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
               
               <TouchableOpacity style={styles.qaLinkRow} onPress={() => { onClose?.(); router.push('/Sign-up'); }}>
                 <Text style={styles.qaLinkText}>Register Now (New Patient Account) : <Text style={styles.qaLinkUnderline}>Click here</Text></Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.qaLinkRow} onPress={() => { onClose?.(); router.push('/doctor-signup'); }}>
-                <Text style={styles.qaLinkText}>Register Now (New Doctor Account) : <Text style={styles.qaLinkUnderline}>Click here</Text></Text>
-              </TouchableOpacity>
-            </View>
           )}
-        </View>
-      )}
 
       <View style={styles.inputContainer}>
         <TouchableOpacity 
