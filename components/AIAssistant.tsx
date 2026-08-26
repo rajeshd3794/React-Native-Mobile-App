@@ -5,6 +5,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { useVoiceCommand } from '../context/VoiceCommandContext';
 
 const getDynamicSystemPrompt = (currentPath: string, username: string | null) => {
   return `You are the official Meditrack AI Assistant. Provide 100% accurate guidance for the Meditrack portal.
@@ -411,34 +412,102 @@ export const MobileAIAssistantModal = ({ visible, onClose }: { visible: boolean;
 
 export const GlobalFloatingAI = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { isListening, feedbackMessage, transcript, toggleListening, isSpeaking } = useVoiceCommand();
 
-  const renderFabContent = () => (
-    <TouchableOpacity style={styles.fabWrapper} activeOpacity={0.8} onPress={() => setIsOpen(true)}>
-      <BlurView intensity={Platform.OS === 'android' ? 100 : 80} tint="light" style={styles.fabGlass}>
-        <Text style={styles.fabLabel}>Ask Me</Text>
-      </BlurView>
-    </TouchableOpacity>
+  const renderFloatingControls = () => (
+    <View style={styles.floatingControlsRow}>
+      {/* Voice Command Button */}
+      <TouchableOpacity
+        style={[styles.voiceFabWrapper, isListening && styles.voiceFabActive]}
+        activeOpacity={0.8}
+        onPress={toggleListening}
+      >
+        <BlurView
+          intensity={Platform.OS === 'android' ? 100 : 80}
+          tint={isListening ? 'dark' : 'light'}
+          style={[styles.voiceFabGlass, isListening && styles.voiceFabGlassActive]}
+        >
+          <MaterialIcons
+            name={isListening ? 'mic' : 'mic-none'}
+            size={22}
+            color={isListening ? '#FFFFFF' : '#3182CE'}
+          />
+          <Text style={[styles.voiceFabLabel, isListening && styles.voiceFabLabelActive]}>
+            {isListening ? 'Listening' : 'Voice'}
+          </Text>
+        </BlurView>
+      </TouchableOpacity>
+
+      {/* Ask AI Chat Button */}
+      <TouchableOpacity
+        style={styles.fabWrapper}
+        activeOpacity={0.8}
+        onPress={() => setIsOpen(true)}
+      >
+        <BlurView
+          intensity={Platform.OS === 'android' ? 100 : 80}
+          tint="light"
+          style={styles.fabGlass}
+        >
+          <Text style={styles.fabLabel}>Ask Me</Text>
+        </BlurView>
+      </TouchableOpacity>
+    </View>
   );
+
+  const renderVoiceHUD = () => {
+    if (!isListening && !feedbackMessage && !transcript) return null;
+    return (
+      <View style={styles.voiceHudContainer}>
+        <View style={[styles.voiceHudCard, isListening && styles.voiceHudListening]}>
+          <View style={styles.voiceHudHeader}>
+            <View style={[styles.voiceStatusDot, isListening && styles.voiceStatusDotActive]} />
+            <Text style={styles.voiceHudTitle}>
+              {isListening ? '🎙️ Voice Command Active' : isSpeaking ? '🔊 Speaking...' : '⚡ Voice Assistant'}
+            </Text>
+          </View>
+          {transcript ? (
+            <Text style={styles.voiceHudTranscript} numberOfLines={2}>
+              "{transcript}"
+            </Text>
+          ) : null}
+          {feedbackMessage ? (
+            <Text style={styles.voiceHudFeedback} numberOfLines={2}>
+              {feedbackMessage}
+            </Text>
+          ) : isListening ? (
+            <Text style={styles.voiceHudHelp}>
+              Say "Open Patient Hub", "Enter username [name]", "Submit", or "Start measure"...
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
 
   if (Platform.OS === 'web') {
     return (
-      <View style={styles.webFloatingContainer}>
-        {isOpen ? (
-          <View style={styles.webChatWindow}>
-            <AIAssistantChat onClose={() => setIsOpen(false)} />
-          </View>
-        ) : (
-          renderFabContent()
-        )}
-      </View>
+      <>
+        {renderVoiceHUD()}
+        <View style={styles.webFloatingContainer}>
+          {isOpen ? (
+            <View style={styles.webChatWindow}>
+              <AIAssistantChat onClose={() => setIsOpen(false)} />
+            </View>
+          ) : (
+            renderFloatingControls()
+          )}
+        </View>
+      </>
     );
   }
 
   // Mobile App Global Floating Button with Full-Screen Modal
   return (
     <>
+      {renderVoiceHUD()}
       <View style={styles.mobileFloatingContainer}>
-        {renderFabContent()}
+        {renderFloatingControls()}
       </View>
       <MobileAIAssistantModal visible={isOpen} onClose={() => setIsOpen(false)} />
     </>
@@ -584,9 +653,50 @@ const styles = StyleSheet.create({
   },
   mobileFloatingContainer: {
     position: 'absolute',
-    bottom: 30, // Usually placed slightly higher to avoid tab bars or home indicators
+    bottom: 30,
     right: 20,
     zIndex: 9999,
+  },
+  floatingControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  voiceFabWrapper: {
+    borderRadius: 30,
+    overflow: 'hidden',
+    shadowColor: '#3182CE',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(49, 130, 206, 0.4)',
+  },
+  voiceFabActive: {
+    borderColor: '#E53E3E',
+    shadowColor: '#E53E3E',
+    shadowOpacity: 0.4,
+  },
+  voiceFabGlass: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(235, 248, 255, 0.9)',
+    gap: 6,
+  },
+  voiceFabGlassActive: {
+    backgroundColor: '#E53E3E',
+  },
+  voiceFabLabel: {
+    color: '#2B6CB0',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  voiceFabLabelActive: {
+    color: '#FFFFFF',
   },
   fabWrapper: {
     borderRadius: 30,
@@ -600,24 +710,84 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   fabGlass: {
-    paddingVertical: 14,
-    paddingHorizontal: 28,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Extra frost layer
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
   },
   fabLabel: {
-    color: '#1A365D', // Dark Blue
+    color: '#1A365D',
     fontWeight: '800',
-    fontSize: 16,
+    fontSize: 15,
     letterSpacing: 0.5,
   },
-  fab: {
-    display: 'none',
+  voiceHudContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 20 : 50,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    zIndex: 10000,
+    pointerEvents: 'none',
   },
-  fabEmoji: {
-    fontSize: 26,
+  voiceHudCard: {
+    backgroundColor: 'rgba(26, 54, 93, 0.95)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    maxWidth: 500,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  voiceHudListening: {
+    borderColor: '#63B3ED',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+  },
+  voiceHudHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  voiceStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#A0AEC0',
+    marginRight: 8,
+  },
+  voiceStatusDotActive: {
+    backgroundColor: '#48BB78',
+  },
+  voiceHudTitle: {
+    color: '#E2E8F0',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  voiceHudTranscript: {
+    color: '#90CDF4',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  voiceHudFeedback: {
+    color: '#68D391',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  voiceHudHelp: {
+    color: '#CBD5E0',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 2,
   },
   webChatWindow: {
     width: 350,
@@ -637,13 +807,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
     backgroundColor: '#F7F9FC',
-    alignItems: 'center', // Center content
+    alignItems: 'center',
   },
   quickActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EDF2F7',
-    alignSelf: 'center', // Centered alignment
+    alignSelf: 'center',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
