@@ -42,8 +42,10 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const shouldKeepListeningRef = useRef<boolean>(false);
   const handlersRef = useRef<Map<string, FormFieldsHandler>>(new Map());
   const feedbackTimeoutRef = useRef<any>(null);
+  const debounceTimerRef = useRef<any>(null);
 
   const showFeedback = (msg: string) => {
     setFeedbackMessage(msg);
@@ -82,20 +84,20 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Route & URL Navigation Mappings
   const routeMappings: { [key: string]: string[] } = {
-    '/': ['home', 'landing', 'main page', 'start', 'index', 'welcome'],
-    '/patient-auth': ['patient login', 'login as patient', 'patient sign in', 'patient auth', 'patient portal login'],
-    '/Sign-up': ['patient sign up', 'patient signup', 'patient register', 'patient registration', 'register patient', 'sign up patient'],
-    '/doctor-login': ['doctor login', 'doctor sign in', 'doctor auth', 'login as doctor', 'doctors login'],
+    '/': ['home', 'landing', 'main page', 'start', 'index', 'welcome', 'go home', 'open home'],
+    '/patient-auth': ['patient login', 'login patient', 'patient sign in', 'patient auth', 'patient portal login', 'patient portal', 'sign in as patient'],
+    '/Sign-up': ['patient sign up', 'patient signup', 'patient register', 'patient registration', 'register patient', 'sign up patient', 'sign up', 'signup', 'register', 'registration'],
+    '/doctor-login': ['doctor login', 'doctor sign in', 'doctor auth', 'login as doctor', 'login doctor', 'doctors login'],
     '/doctor-signup': ['doctor sign up', 'doctor signup', 'doctor register', 'doctor registration', 'register doctor'],
-    '/admin-login': ['admin login', 'administrator login', 'admin sign in', 'login as admin'],
-    '/admin': ['admin panel', 'admin dashboard', 'administration', 'admin console'],
-    '/patient/hub': ['patient hub', 'hub', 'my hub', 'patient dashboard', 'wellness hub'],
-    '/patient/hub/pchs': ['health status', 'patient health status', 'current health status', 'pchs', 'health metrics'],
-    '/patient/hub/fitnessplan': ['fitness plan', 'patient fitness plan', 'workout plan', 'diet plan', 'nutrition plan'],
-    '/patient/hub/fitnesstrack': ['fitness track', 'patient fitness track', 'step tracker', 'step tracking', 'pedometer', 'fitness tracker'],
-    '/appointments': ['appointments', 'book appointment', 'schedule appointment', 'appointment calendar'],
-    '/appointments-list': ['appointments list', 'view appointments', 'my appointments', 'all appointments', 'appointment records'],
-    '/Doctors-list': ['doctors list', 'doctor list', 'find doctor', 'view doctors', 'available doctors'],
+    '/admin-login': ['admin login', 'administrator login', 'admin sign in', 'login as admin', 'admin auth'],
+    '/admin': ['admin panel', 'admin dashboard', 'administration', 'admin console', 'open admin'],
+    '/patient/hub': ['patient hub', 'hub', 'my hub', 'patient dashboard', 'wellness hub', 'open hub', 'go to hub', 'open patient hub'],
+    '/patient/hub/pchs': ['health status', 'patient health status', 'current health status', 'pchs', 'health metrics', 'my health status'],
+    '/patient/hub/fitnessplan': ['fitness plan', 'patient fitness plan', 'workout plan', 'diet plan', 'nutrition plan', 'my diet', 'workout routine'],
+    '/patient/hub/fitnesstrack': ['fitness track', 'patient fitness track', 'step tracker', 'step tracking', 'pedometer', 'fitness tracker', 'track steps', 'my steps'],
+    '/appointments': ['appointments', 'book appointment', 'schedule appointment', 'appointment calendar', 'book doctor', 'make appointment'],
+    '/appointments-list': ['appointments list', 'view appointments', 'my appointments', 'all appointments', 'appointment records', 'list appointments'],
+    '/Doctors-list': ['doctors list', 'doctor list', 'find doctor', 'view doctors', 'available doctors', 'doctors', 'specialists'],
     '/patient-history': ['patient history', 'medical history', 'health records', 'history'],
     '/patient-records/patient-info': ['patient info', 'patient records', 'patient profile'],
     '/fetch-username': ['forgot username', 'fetch username', 'recover username', 'find username'],
@@ -103,7 +105,7 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   const normalizeText = (text: string) => {
-    return text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?]/g, '').trim();
+    return text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?]/g, ' ').replace(/\s+/g, ' ').trim();
   };
 
   const executeCommand = async (rawSpeech: string): Promise<boolean> => {
@@ -112,7 +114,7 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setTranscript(rawSpeech);
 
     // 1. Check for Go Back / Return
-    if (clean === 'go back' || clean === 'back' || clean === 'return' || clean === 'previous page' || clean.includes('go back')) {
+    if (clean === 'go back' || clean === 'back' || clean === 'return' || clean === 'previous page' || clean.includes('go back') || clean.includes('previous screen')) {
       showFeedback('Going back...');
       speak('Going back');
       router.back();
@@ -131,12 +133,10 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
 
     // 3. Check for Direct URL or Route Open Commands
-    // "open url /appointments", "open /patient/hub", "go to url..."
     const urlMatch = rawSpeech.match(/(?:open\s+(?:url|route|page)?|go\s+to\s+(?:url|route|page)?|navigate\s+to\s+(?:url|route|page)?)\s+([/\w-]+)/i);
     if (urlMatch && urlMatch[1]) {
       let target = urlMatch[1].trim();
       if (!target.startsWith('/')) target = '/' + target;
-      // If target matches a valid route
       const knownRoutes = Object.keys(routeMappings);
       const matched = knownRoutes.find(r => r.toLowerCase() === target.toLowerCase());
       if (matched) {
@@ -147,23 +147,15 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
     }
 
-    // 4. Check Route Mappings by Keyword
-    for (const [route, aliases] of Object.entries(routeMappings)) {
-      for (const alias of aliases) {
-        if (clean.includes(`open ${alias}`) || clean.includes(`go to ${alias}`) || clean.includes(`navigate to ${alias}`) || clean.includes(`show ${alias}`) || clean === alias) {
-          showFeedback(`Opening ${alias}...`);
-          speak(`Opening ${alias}`);
-          router.push(route as any);
-          return true;
-        }
-      }
-    }
-
-    // 5. Check Active Form Actions & Field Filling
+    // 4. Check Active Form Actions & Field Filling FIRST (if user is on form)
     const activeHandler = Array.from(handlersRef.current.values()).pop();
 
-    // 5a. Submit / Login / Sign Up button triggers
-    if (clean === 'login' || clean === 'sign in' || clean === 'submit' || clean === 'submit form' || clean === 'click login' || clean === 'click submit' || clean === 'click sign up' || clean === 'register' || clean === 'save' || clean === 'confirm') {
+    // 4a. Submit / Login / Sign Up button triggers
+    if (
+      clean === 'login' || clean === 'sign in' || clean === 'submit' || clean === 'submit form' ||
+      clean === 'click login' || clean === 'click submit' || clean === 'click sign up' ||
+      clean === 'register' || clean === 'save' || clean === 'confirm' || clean.includes('click login') || clean.includes('press login')
+    ) {
       if (activeHandler && activeHandler.submit) {
         showFeedback('Submitting form...');
         speak('Submitting form');
@@ -172,15 +164,14 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
     }
 
-    // 5b. Start Heart Rate / Measure Action
-    if (clean.includes('start measure') || clean.includes('measure heart rate') || clean.includes('heart rate measure') || clean.includes('start measuring')) {
+    // 4b. Start Heart Rate / Measure Action
+    if (clean.includes('start measure') || clean.includes('measure heart rate') || clean.includes('heart rate measure') || clean.includes('start measuring') || clean.includes('measure pulse') || clean.includes('heart rate scan')) {
       if (activeHandler && activeHandler.triggerAction) {
         showFeedback('Starting heart rate measurement...');
         speak('Starting heart rate measurement');
         activeHandler.triggerAction('START_MEASURE');
         return true;
       } else {
-        // Navigate to hub first and trigger
         router.push('/patient/hub');
         showFeedback('Opening Patient Hub for measurement...');
         speak('Opening Patient Hub for heart rate measurement');
@@ -188,22 +179,18 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
     }
 
-    // 5c. Form Field Input Commands
-    // Examples: "enter username john_doe", "set password secret123", "enter email test@gmail.com", "enter age 30", "enter name Robert"
+    // 4c. Form Field Input Commands
     const fieldPatterns = [
-      /(?:enter|set|fill|type|input|write)\s+(username|user name|user)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(password|pass code|pass)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(email|email address)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(full name|name)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(age)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(gender)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(phone|phone number|mobile)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(specialization|specialty)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(blood group|blood type)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(symptoms|symptom|issue)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(doctor|doctor name)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(date|appointment date)\s+(?:as|to|is|with)?\s*(.+)/i,
-      /(?:enter|set|fill|type|input|write)\s+(notes|note)\s+(?:as|to|is|with)?\s*(.+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(username|user name|user)\s*(?:is|as|to|with|=|:)?\s+([a-zA-Z0-9_.-]+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(password|pass code|pass)\s*(?:is|as|to|with|=|:)?\s+([^\s]+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(email|email address)\s*(?:is|as|to|with|=|:)?\s+(.+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(full name|first name|name)\s*(?:is|as|to|with|=|:)?\s+(.+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(age)\s*(?:is|as|to|with|=|:)?\s+(\d+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(gender)\s*(?:is|as|to|with|=|:)?\s+(male|female|other)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(phone|phone number|mobile)\s*(?:is|as|to|with|=|:)?\s+([0-9\s-]+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(specialization|specialty|designation)\s*(?:is|as|to|with|=|:)?\s+(.+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(blood group|blood type)\s*(?:is|as|to|with|=|:)?\s+([a-zA-Z+-]+)/i,
+      /(?:enter|set|fill|type|input|write|my)?\s*(date|appointment date|day)\s*(?:is|as|to|with|=|:)?\s+(\d+)/i,
     ];
 
     for (const pattern of fieldPatterns) {
@@ -213,13 +200,12 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
         if (fieldName === 'user' || fieldName === 'username') fieldName = 'username';
         if (fieldName === 'pass' || fieldName === 'password' || fieldName === 'passcode') fieldName = 'password';
         if (fieldName === 'emailaddress') fieldName = 'email';
-        if (fieldName === 'fullname') fieldName = 'name';
+        if (fieldName === 'fullname' || fieldName === 'firstname') fieldName = 'name';
         if (fieldName === 'phonenumber' || fieldName === 'mobile') fieldName = 'phone';
         if (fieldName === 'bloodtype') fieldName = 'bloodGroup';
-        if (fieldName === 'appointmentdate') fieldName = 'date';
+        if (fieldName === 'appointmentdate' || fieldName === 'day') fieldName = 'date';
 
         let fieldValue = match[2].trim();
-        // Clean up common speech formatting
         if (fieldName === 'email') fieldValue = fieldValue.replace(/\s+at\s+/g, '@').replace(/\s+dot\s+/g, '.').replace(/\s+/g, '');
         if (fieldName === 'username') fieldValue = fieldValue.replace(/\s+/g, '').toLowerCase();
 
@@ -230,6 +216,26 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return true;
         } else {
           showFeedback(`Field "${fieldName}" updated with "${fieldValue}"`);
+          return true;
+        }
+      }
+    }
+
+    // 5. Check Route Mappings by Keyword / Phrases
+    for (const [route, aliases] of Object.entries(routeMappings)) {
+      for (const alias of aliases) {
+        if (
+          clean === alias ||
+          clean.includes(`open ${alias}`) ||
+          clean.includes(`go to ${alias}`) ||
+          clean.includes(`navigate to ${alias}`) ||
+          clean.includes(`show ${alias}`) ||
+          clean.includes(`take me to ${alias}`) ||
+          clean.includes(alias)
+        ) {
+          showFeedback(`Opening ${alias}...`);
+          speak(`Opening ${alias}`);
+          router.push(route as any);
           return true;
         }
       }
@@ -248,6 +254,7 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   const startListening = async () => {
+    shouldKeepListeningRef.current = true;
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -262,32 +269,44 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
           recognition.onstart = () => {
             setIsListening(true);
-            showFeedback('🎤 Listening... (Speak your command)');
+            showFeedback('🎤 Listening... (Speak any command)');
           };
 
           recognition.onresult = (event: any) => {
-            let finalTranscript = '';
+            let latestText = '';
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
-              } else {
-                setTranscript(event.results[i][0].transcript);
+              const res = event.results[i];
+              if (res && res[0]) {
+                latestText = res[0].transcript;
+                if (res.isFinal) {
+                  const cmd = latestText.trim();
+                  if (cmd) executeCommand(cmd);
+                } else {
+                  setTranscript(latestText);
+                  if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                  debounceTimerRef.current = setTimeout(() => {
+                    if (latestText.trim()) executeCommand(latestText.trim());
+                  }, 900);
+                }
               }
-            }
-            if (finalTranscript.trim()) {
-              executeCommand(finalTranscript.trim());
             }
           };
 
           recognition.onerror = (event: any) => {
-            console.warn('Speech recognition error:', event.error);
-            if (event.error !== 'no-speech') {
+            console.warn('Speech recognition event error:', event.error);
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+              shouldKeepListeningRef.current = false;
               setIsListening(false);
+              showFeedback('Microphone access not allowed. Please grant permission.');
             }
           };
 
           recognition.onend = () => {
-            setIsListening(false);
+            if (shouldKeepListeningRef.current) {
+              try { recognition.start(); } catch (e) { setIsListening(false); }
+            } else {
+              setIsListening(false);
+            }
           };
 
           recognition.start();
@@ -297,7 +316,7 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       }
 
-      // Mobile / Fallback Audio Recording
+      // Mobile Audio Recording Fallback
       const permission = await Audio.requestPermissionsAsync();
       if (permission.status !== 'granted') {
         showFeedback('Microphone permission required.');
@@ -323,6 +342,7 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   const stopListening = async () => {
+    shouldKeepListeningRef.current = false;
     try {
       setIsListening(false);
       if (Platform.OS === 'web' && recognitionRef.current) {
@@ -334,7 +354,6 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const uri = recording.getURI();
         setRecording(null);
         if (uri) {
-          // Mobile audio transcribe & execute
           transcribeAndExecuteMobile(uri);
         }
       }
@@ -345,30 +364,30 @@ export const VoiceCommandProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const transcribeAndExecuteMobile = async (uri: string) => {
     try {
-      showFeedback('Processing mobile voice command...');
+      showFeedback('Processing voice command...');
       const apiKey = process.env.EXPO_PUBLIC_LLM_API_KEY || "";
-      if (!apiKey || !apiKey.startsWith('gsk_')) {
-        showFeedback('Voice recognition processed.');
-        return;
-      }
-      const formData = new FormData();
-      formData.append('file', {
-        uri,
-        type: 'audio/m4a',
-        name: 'audio.m4a',
-      } as any);
-      formData.append('model', 'whisper-large-v3-turbo');
-      formData.append('language', 'en');
+      if (apiKey && apiKey.startsWith('gsk_')) {
+        const formData = new FormData();
+        formData.append('file', {
+          uri,
+          type: 'audio/m4a',
+          name: 'audio.m4a',
+        } as any);
+        formData.append('model', 'whisper-large-v3-turbo');
+        formData.append('language', 'en');
 
-      const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-        body: formData,
-      });
-      const data = await response.json();
-      if (data && data.text) {
-        executeCommand(data.text);
+        const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          body: formData,
+        });
+        const data = await response.json();
+        if (data && data.text) {
+          executeCommand(data.text);
+          return;
+        }
       }
+      showFeedback('Voice command captured.');
     } catch (e) {
       console.error('Mobile transcription error:', e);
     }

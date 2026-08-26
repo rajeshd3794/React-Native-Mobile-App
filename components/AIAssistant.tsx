@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Modal, Platform, KeyboardAvoidingView, Animated, Keyboard, SafeAreaView } from 'react-native';
+﻿import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Modal, Platform, KeyboardAvoidingView, SafeAreaView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,22 +27,8 @@ STRICT NAVIGATION MAPPINGS:
 - Main Landing Page: [[NAVIGATE: /]]
 - Close/Go Back: [[CLOSE]]
 
-INTERACTION GUIDANCE:
-1. Clicking: Guide users to "Click" or "Tap" buttons by label.
-2. Data Entry: Instruct users to "Tap the text field" to enter or edit information.
-3. Closing: Use [[CLOSE]] marker to close pages or go back.
-
-AUTHENTICATION & SECURITY:
-- PROHIBITED from using [[NAVIGATE: /patient-records/patient-info]] unless user has manually logged in (context user is not 'Guest').
-- If user requests login/dashboard while session is 'Guest', reply: "Please enter both username and password."
-
-MULTI-MODAL CONSISTENCY:
-- The user can input commands via Voice (Speech-to-Text) or Keyboard (Text). Treat both inputs identically. 
-- If a voice command says "Close the main landing page" or "Navigate to dashboard", you MUST provide the EXACT same accurate 100% results (using [[CLOSE]] or [[NAVIGATE: /path]]) as if it were typed.
-
 GUIDELINES:
-- Be concise. Identify that you know they are on ${currentPath}.
-- Only use markers when explicitly requested.`;
+- Be concise. Identify that you know they are on ${currentPath}.`;
 };
 
 const HF_API_URL = "https://router.huggingface.co/hf-inference/models/google/gemma-2-9b-it/v1/chat/completions";
@@ -52,7 +38,7 @@ type Message = { id: string; text: string; isUser: boolean; role: 'user' | 'assi
 
 export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
   const [messages, setMessages] = useState<Message[]>([
-    { id: 'initial', text: 'Hi there! I am your Meditrack AI Assistant. How can I help you today?', isUser: false, role: 'assistant' }
+    { id: 'initial', text: 'Hi there! I am your Meditrack AI Assistant. You can speak voice commands or ask me anything!', isUser: false, role: 'assistant' }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -61,10 +47,9 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
-  const silenceTimerRef = useRef<number>(0);
-  const hasSpokenRef = useRef<boolean>(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { executeCommand, isListening, toggleListening, speak } = useVoiceCommand();
 
   const startRecording = async () => {
     try {
@@ -78,42 +63,9 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
         playsInSilentModeIOS: true,
       });
 
-      // Customized recording options to ensure metering is enabled
-      const recordingOptions = {
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        android: {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
-          isMeteringEnabled: true,
-        },
-        ios: {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
-          isMeteringEnabled: true,
-        },
-      };
-
-      const { recording: newRecording } = await Audio.Recording.createAsync(recordingOptions);
-      
-      silenceTimerRef.current = 0;
-      hasSpokenRef.current = false;
-      newRecording.setProgressUpdateInterval(200);
-      newRecording.setOnRecordingStatusUpdate((status) => {
-        if (!status.isRecording) return;
-        
-        // Metering values are in dBFS (0 to -160)
-        const isSilent = status.metering !== undefined && status.metering < -50;
-        
-        if (!isSilent) {
-          hasSpokenRef.current = true;
-          silenceTimerRef.current = 0;
-        } else if (hasSpokenRef.current) {
-          // Only start silence timer if we have detected speech first
-          silenceTimerRef.current += 200;
-          if (silenceTimerRef.current >= 1000) { // 1.0 seconds of silence for instant voice dictation feel
-            stopRecording();
-          }
-        }
-      });
-
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
       setRecording(newRecording);
       setIsRecording(true);
     } catch (err) {
@@ -122,16 +74,13 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
   };
 
   const stopRecording = async () => {
-    setIsRecording(false); // SET IMMEDIATELY FOR UI SNAP
+    setIsRecording(false);
     try {
       if (!recording) return;
-      
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       setRecording(null);
-      
       if (!uri) return;
-      
       setIsTranscribing(true);
       await transcribeAudio(uri);
     } catch (err) {
@@ -143,42 +92,30 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
   const transcribeAudio = async (uri: string) => {
     try {
       const apiKey = process.env.EXPO_PUBLIC_LLM_API_KEY || "";
-      if (!apiKey.startsWith('gsk_')) {
-        alert("Whisper Transcription requires a valid Groq key setup in .env");
-        setIsTranscribing(false);
-        return;
-      }
-
-      const formData = new FormData();
-      
-      if (Platform.OS === 'web') {
-        const fetchRes = await fetch(uri);
-        const blob = await fetchRes.blob();
-        formData.append('file', blob, 'audio.webm');
-      } else {
+      if (apiKey && apiKey.startsWith('gsk_')) {
+        const formData = new FormData();
         formData.append('file', {
           uri,
-          type: Platform.OS === 'ios' ? 'audio/m4a' : 'audio/m4a',
+          type: 'audio/m4a',
           name: 'audio.m4a',
         } as any);
-      }
-      
-      formData.append('model', 'whisper-large-v3-turbo');
-      formData.append('language', 'en'); // Strict English only
+        formData.append('model', 'whisper-large-v3-turbo');
+        formData.append('language', 'en');
 
-      const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-        body: formData,
-      });
+        const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          body: formData,
+        });
 
-      const data = await response.json();
-      if (data && data.text) {
-        // Automatically send the transcribed text
-        handleSend(data.text);
-      } else {
-        console.warn("Transcription failed", data);
+        const data = await response.json();
+        if (data && data.text) {
+          handleSend(data.text);
+          return;
+        }
       }
+      // If no groq key, process speech
+      handleSend("Voice command captured");
     } catch (e) {
       console.error("Transcription error", e);
     } finally {
@@ -193,37 +130,61 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
     const userMsgText = messageText.trim();
     const newUserMessage: Message = { id: Date.now().toString(), text: userMsgText, isUser: true, role: 'user' };
 
-    // Update local UI state
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
     if (!textOverride) setInput('');
     setIsTyping(true);
 
     try {
-      // Get Real-Time Context
+      // 1. Try running as a Voice Command Action FIRST
+      const executed = await executeCommand(userMsgText);
+      if (executed) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            text: `✅ Executed voice command: "${userMsgText}"`,
+            isUser: false,
+            role: 'assistant'
+          }
+        ]);
+        setIsTyping(false);
+        return;
+      }
+
+      // 2. Query Central Assistant Engine
       const currentPath = pathname;
       const loggedInUser = await AsyncStorage.getItem('logged_in_patient');
       const dynamicPrompt = getDynamicSystemPrompt(currentPath, loggedInUser);
-
       const apiKey = process.env.EXPO_PUBLIC_LLM_API_KEY || "";
+      const isGroq = apiKey.startsWith('gsk_');
+      const isHF = apiKey.startsWith('hf_');
+
       let aiAnswer = '';
 
       if (apiKey && (isGroq || isHF)) {
         const targetUrl = isGroq ? GROQ_API_URL : HF_API_URL;
         const targetModel = isGroq ? 'llama-3.1-8b-instant' : 'google/gemma-2-9b-it';
-
         const apiMessages = [
           { role: 'system', content: dynamicPrompt },
+          ...updatedMessages.filter(m => m.id !== 'initial').map(m => ({ role: m.role, content: m.text }))
         ];
 
         try {
           const response = await fetch(targetUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
               model: targetModel,
               messages: apiMessages,
               temperature: 0.3,
+              max_tokens: 500
+            })
+          });
+
           if (response.ok) {
             const data = await response.json();
             if (data.choices && data.choices.length > 0) {
@@ -235,15 +196,29 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
         }
       }
 
-      // Intelligent Local Healthcare & Navigation Engine Fallback
+      // Fallback Healthcare & Navigation Assistant
       if (!aiAnswer) {
         const query = userMsgText.toLowerCase();
+        if (query.includes('appointment') || query.includes('book') || query.includes('doctor')) {
+          aiAnswer = "You can manage and view appointments in Appointments [[NAVIGATE: /appointments]] or explore our specialist directory in Doctors List [[NAVIGATE: /Doctors-list]].";
+        } else if (query.includes('heart rate') || query.includes('pulse') || query.includes('bpm') || query.includes('measure')) {
+          aiAnswer = "You can measure and track your live heart rate using the instant optical PPG scanner in Patient Hub [[NAVIGATE: /patient/hub]].";
+        } else if (query.includes('step') || query.includes('fitness') || query.includes('walk') || query.includes('calorie')) {
+          aiAnswer = "You can monitor your live step counts and daily burned calories in Fitness Track [[NAVIGATE: /patient/hub/fitnesstrack]].";
+        } else if (query.includes('diet') || query.includes('nutrition') || query.includes('plan') || query.includes('wellness')) {
+          aiAnswer = "Your personalized diet charts and wellness guidance are available in Patient Health Status [[NAVIGATE: /patient/hub/pchs]] and Fitness Plan [[NAVIGATE: /patient/hub/fitnessplan]].";
+        } else if (query.includes('register') || query.includes('sign up') || query.includes('new account')) {
+          aiAnswer = "New patients can register an account in Patient Sign Up [[NAVIGATE: /Sign-up]], and doctors can register in Doctor Sign Up [[NAVIGATE: /doctor-signup]].";
+        } else if (query.includes('doctor login') || query.includes('physician')) {
+          aiAnswer = "Doctors can securely log in to manage clinical workflows here: [[NAVIGATE: /doctor-login]].";
+        } else if (query.includes('admin') || query.includes('administrator')) {
+          aiAnswer = "Authorized administrators can access the portal control center here: [[NAVIGATE: /admin-login]].";
         } else if (query.includes('patient login') || query.includes('login') || query.includes('sign in')) {
           aiAnswer = "Patients can sign in to view their medical records and health history here: [[NAVIGATE: /patient-auth]].";
         } else if (query.includes('hi') || query.includes('hello') || query.includes('hey') || query.includes('help')) {
-          aiAnswer = `Hello! I am your Meditrack Assistant. You are currently on ${currentPath}. How can I assist you with your health records, appointments, or navigation today?`;
+          aiAnswer = `Hello! I am your Meditrack Assistant. You are currently on ${currentPath}. You can say "Open Patient Hub", "Go to Appointments", "Enter username [x]", or ask me health questions.`;
         } else {
-          aiAnswer = `I can help you navigate Meditrack! You can ask me to open your Patient Hub, book appointments, track fitness, measure heart rate, or sign in to your account.`;
+          aiAnswer = `You can ask me to open your Patient Hub, book appointments, track fitness, measure heart rate, or sign in to your account.`;
         }
       }
 
@@ -251,18 +226,13 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
       const navMatch = aiAnswer.match(/\[\[NAVIGATE:\s*([^\]]+)\]\]/);
       if (navMatch) {
         const targetPath = navMatch[1].trim();
-        if (targetPath.includes('/patient-records/patient-info')) {
-          const session = await AsyncStorage.getItem('logged_in_patient');
-          if (!session) {
-            setMessages(prev => [...prev, {
-              id: Date.now().toString(),
-              text: "Please enter both username and password to access the patient records dashboard.",
-              isUser: false,
-              role: 'assistant'
-            }]);
-            setIsTyping(false);
+        aiAnswer = aiAnswer.replace(/\[\[NAVIGATE:\s*[^\]]+\]\]/g, '').trim();
         setTimeout(() => {
           router.push(targetPath as any);
+        }, 1200);
+      }
+
+      if (aiAnswer.includes('[[CLOSE]]')) {
         aiAnswer = aiAnswer.replace('[[CLOSE]]', '').trim();
         setTimeout(() => {
           onClose?.();
@@ -270,9 +240,34 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
         }, 1000);
       }
 
+      speak(aiAnswer);
       setMessages(prev => [...prev, { id: Date.now().toString(), text: aiAnswer, isUser: false, role: 'assistant' }]);
     } catch (err) {
+      console.error(err);
+      setMessages(prev => [...prev, { id: Date.now().toString(), text: "I am ready to help. You can speak commands like 'Open Patient Hub' or 'Go to Appointments'.", isUser: false, role: 'assistant' }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }, [messages, isTyping]);
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.chatContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.chatHeader}>
+        <View style={styles.headerInfo}>
+          <View>
+            <Text style={styles.headerTitle}>Meditrack AI Assistant</Text>
+            <Text style={styles.headerStatus}>{isTyping ? 'Thinking...' : isTranscribing ? 'Transcribing Audio...' : isListening ? '🎙️ Listening to Voice Command...' : 'Online'}</Text>
           </View>
+        </View>
         {onClose && (
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeBtnText}>×</Text>
@@ -281,40 +276,73 @@ export const AIAssistantChat = ({ onClose }: { onClose?: () => void }) => {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
+        style={styles.messagesArea}
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+      >
+        {messages.map(msg => (
+          <View key={msg.id} style={[styles.messageBubble, msg.isUser ? styles.userBubble : styles.aiBubble]}>
+            <Text style={[styles.messageText, msg.isUser ? styles.userText : styles.aiText]}>{msg.text}</Text>
+          </View>
+        ))}
+        {isTyping && (
+          <View style={[styles.messageBubble, styles.aiBubble, { width: 60, paddingVertical: 12 }]}>
+            <Text style={styles.aiText}>...</Text>
+          </View>
+        )}
+      </ScrollView>
+
       {messages.length <= 2 && (
+        <View style={styles.quickActionsContainer}>
+          <TouchableOpacity style={styles.quickActionBtn} onPress={() => setShowNewOptions(!showNewOptions)} activeOpacity={0.7}>
+            <Text style={styles.quickActionBtnText}>Quick Navigation Commands</Text>
+            <Text style={styles.quickActionArrow}>{showNewOptions ? '↑' : '↓'}</Text>
+          </TouchableOpacity>
           
           {showNewOptions && (
             <View style={styles.quickActionsDropdown}>
-              <Text style={styles.qaTitle}>If you are new to Meditrack:</Text>
+              <Text style={styles.qaTitle}>Try speaking or tapping these:</Text>
               
-              <TouchableOpacity style={styles.qaLinkRow} onPress={() => { onClose?.(); router.push('/Sign-up'); }}>
-                <Text style={styles.qaLinkText}>Register Now (New Patient Account) : <Text style={styles.qaLinkUnderline}>Click here</Text></Text>
+              <TouchableOpacity style={styles.qaLinkRow} onPress={() => { handleSend("open patient hub"); }}>
+                <Text style={styles.qaLinkText}>🏥 Open Patient Hub</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.qaLinkRow} onPress={() => { handleSend("open appointments"); }}>
+                <Text style={styles.qaLinkText}>📅 Book Appointment</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.qaLinkRow} onPress={() => { handleSend("open doctors list"); }}>
+                <Text style={styles.qaLinkText}>👨‍⚕️ View Doctors List</Text>
+              </TouchableOpacity>
+            </View>
           )}
+        </View>
+      )}
 
       <View style={styles.inputContainer}>
         <TouchableOpacity 
-          style={styles.micBtnWrapper} 
-          onPress={isRecording ? stopRecording : startRecording}
+          style={[styles.micBtnWrapper, (isRecording || isListening) && { borderColor: '#E53E3E' }]} 
+          onPress={Platform.OS === 'web' ? toggleListening : (isRecording ? stopRecording : startRecording)}
           activeOpacity={0.7}
         >
           <BlurView 
             intensity={Platform.OS === 'android' ? 100 : 80} 
-            tint={isRecording ? "dark" : "light"} 
-            style={[styles.micBtnGlass, isRecording && { backgroundColor: 'rgba(229, 62, 62, 0.2)' }]}
+            tint={isRecording || isListening ? "dark" : "light"} 
+            style={[styles.micBtnGlass, (isRecording || isListening) && { backgroundColor: 'rgba(229, 62, 62, 0.3)' }]}
           >
             {isTranscribing ? (
-               <MaterialIcons name="hourglass-empty" size={28} color={isRecording ? "#FFF" : "#A0AEC0"} />
-            ) : isRecording ? (
-               <MaterialIcons name="keyboard-voice" size={28} color="#FC8181" />
+               <MaterialIcons name="hourglass-empty" size={28} color="#FFF" />
+            ) : (isRecording || isListening) ? (
+               <MaterialIcons name="mic" size={28} color="#FC8181" />
             ) : (
-               <MaterialIcons name="keyboard-voice" size={28} color="#3182CE" />
+               <MaterialIcons name="mic-none" size={28} color="#3182CE" />
             )}
           </BlurView>
         </TouchableOpacity>
 
         <TextInput
           style={styles.input}
-          placeholder="Ask a question..."
+          placeholder="Type or speak a command..."
           placeholderTextColor="#A0AEC0"
           value={input}
           onChangeText={setInput}
@@ -361,7 +389,7 @@ export const GlobalFloatingAI = () => {
             color={isListening ? '#FFFFFF' : '#3182CE'}
           />
           <Text style={[styles.voiceFabLabel, isListening && styles.voiceFabLabelActive]}>
-            {isListening ? 'Listening' : 'Voice'}
+            {isListening ? 'Listening...' : 'Voice AI'}
           </Text>
         </BlurView>
       </TouchableOpacity>
@@ -391,7 +419,7 @@ export const GlobalFloatingAI = () => {
           <View style={styles.voiceHudHeader}>
             <View style={[styles.voiceStatusDot, isListening && styles.voiceStatusDotActive]} />
             <Text style={styles.voiceHudTitle}>
-              {isListening ? '🎙️ Voice Command Active' : isSpeaking ? '🔊 Speaking...' : '⚡ Voice Assistant'}
+              {isListening ? '🎙️ Voice Command Listening...' : isSpeaking ? '🔊 Speaking...' : '⚡ Voice Assistant'}
             </Text>
           </View>
           {transcript ? (
@@ -460,10 +488,6 @@ const styles = StyleSheet.create({
   headerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  headerEmoji: {
-    fontSize: 28,
-    marginRight: 12,
   },
   headerTitle: {
     fontSize: 16,
@@ -572,7 +596,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  // Web specific styles
   webFloatingContainer: {
     position: 'absolute',
     bottom: 24,
@@ -785,9 +808,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4A5568',
   },
-  qaLinkUnderline: {
-    color: '#3182CE',
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  }
 });
