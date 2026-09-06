@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingVi
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { addPatient, getPatientByUsername } from '../db/db';
-import { useVoiceForm } from '../hooks/useVoiceForm';
 
 export default function PatientSignUp() {
   const router = useRouter();
@@ -16,23 +15,6 @@ export default function PatientSignUp() {
   const [dob, setDob] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-
-  useVoiceForm('sign-up', {
-    setField: (field, value) => {
-      if (field === 'name' || field === 'fullname') setName(value);
-      if (field === 'username') setUsername(value);
-      if (field === 'email') setEmail(value);
-      if (field === 'dob' || field === 'date' || field === 'birthdate') setDob(value);
-      if (field === 'password') {
-        setPassword(value);
-        setConfirmPassword(value);
-      }
-      if (field === 'confirmpassword') setConfirmPassword(value);
-    },
-    submit: () => {
-      handleSubmit();
-    }
-  });
 
   const handleSubmit = async () => {
     if (!name || !username || !dob || !email || !password || !confirmPassword) {
